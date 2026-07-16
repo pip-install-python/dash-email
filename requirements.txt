@@ -1,0 +1,20 @@
+# --- Component library ---
+dash>=4.2.0
+
+# --- Documentation site ---
+dash-mantine-components>=2.7.0
+dash-iconify>=0.1.2
+markdown2dash>=0.1.2
+python-frontmatter>=1.0.0
+pydantic>=2.3.0
+python-dotenv>=1.0.0
+dash-improve-my-llms[flask]>=2.0.0
+requests>=2.27.1              # 2plot.dev ad-network client (lib/ad_client.py)
+
+# --- Email Builder app (/email-builder) ---
+google-genai>=1.0.0
+resend>=2.0.0
+pandas>=2.0.0
+
+# --- Production server ---
+gunicorn>=21.2.0

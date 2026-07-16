@@ -1,0 +1,113 @@
+/* Dash Email - Custom Styles */
+
+/* Base styles */
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Email preview container */
+#email-preview-container {
+    min-height: 500px;
+    background-color: #f6f9fc;
+}
+
+/* Upload area hover effect */
+.dcc-upload:hover {
+    border-color: #228be6 !important;
+}
+
+/* Chip styling */
+.mantine-Chip-label[data-checked] {
+    font-weight: 500;
+}
+
+/* Code highlight customization */
+.mantine-CodeHighlight-root {
+    border-radius: 8px;
+}
+
+/* Accordion styling */
+.mantine-Accordion-item {
+    border-radius: 8px !important;
+    margin-bottom: 8px;
+}
+
+/* Button transitions */
+.mantine-Button-root {
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.mantine-Button-root:active {
+    transform: scale(0.98);
+}
+
+/* Card hover effects */
+.mantine-Card-root {
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.mantine-Card-root:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Loading animation for generate button */
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.generating {
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #a1a1a1;
+}
+
+/* Email component preview styling */
+[data-email-component] {
+    box-sizing: border-box;
+}
+
+/* Tab panel transitions */
+.mantine-Tabs-panel {
+    animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* Paper shadow on hover */
+.mantine-Paper-root[data-with-border]:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* Alert styling */
+.mantine-Alert-root {
+    border-radius: 8px;
+}
+
+/* Text input focus styling */
+.mantine-TextInput-input:focus,
+.mantine-Textarea-input:focus {
+    border-color: #228be6;
+    box-shadow: 0 0 0 2px rgba(34, 139, 230, 0.1);
+}

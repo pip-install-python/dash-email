@@ -1,0 +1,8 @@
+include dash_email/dash_email.min.js
+include dash_email/dash_email.min.js.LICENSE.txt
+include dash_email/metadata.json
+include dash_email/package.json
+include package.json
+include README.md
+include LICENSE
+recursive-include dash_email *.js *.json *.txt

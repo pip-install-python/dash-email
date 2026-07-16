@@ -1,0 +1,29 @@
+# Render blueprint — dash-email docs (single web service, docker runtime).
+# Auto-deploys on push to main. Serves the component documentation + the
+# /email-builder app on the default *.onrender.com URL.
+#
+# FIRST DEPLOY CHECKLIST:
+#   1. Create the Blueprint from this repo; fill every `sync: false` secret in
+#      the dashboard (values live in the local .env — NEVER committed).
+#   2. GOOGLE_API_KEY powers AI generation in /email-builder; RESEND_API_KEY
+#      powers sending. Both are optional — the docs pages work without them,
+#      the builder degrades gracefully.
+#   3. If you add a custom domain later, update DOCS_BASE_URL in
+#      lib/constants.py (drives sitemap.xml/llms.txt absolute URLs).
+services:
+  - type: web
+    name: dash-email-docs
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: WEB_WORKERS
+        value: "1"
+      # --- Secrets (set in the Render dashboard) ---
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false

@@ -1,0 +1,14 @@
+.git
+.claude
+.idea
+.venv
+.env
+node_modules
+__pycache__
+*.py[cod]
+dist
+build
+*.egg-info
+.pytest_cache
+assets/uploads
+.DS_Store
