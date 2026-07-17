@@ -8,19 +8,33 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
+from utils.ai_config import get_api_key, is_ai_enabled  # noqa: F401  (re-exported)
 from utils.wide_event_logger import get_email_logger
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Initialize the client - it auto-detects GEMINI_API_KEY from environment
-# Also check for GOOGLE_API_KEY as fallback
-api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-if api_key:
-    client = genai.Client(api_key=api_key)
-else:
-    # Let the SDK try to find the key automatically
-    client = genai.Client()
+_client = None
+
+
+def get_client():
+    """
+    Build the Gemini client on first use.
+
+    Constructing this at import time raised ValueError whenever no key was set,
+    which took down the whole app at startup. Deferring it keeps the app
+    importable without a key so the builder can fall back to showcase templates.
+    """
+    global _client
+    if _client is None:
+        api_key = get_api_key()
+        if not api_key:
+            raise RuntimeError(
+                "No Gemini API key configured. Set GOOGLE_API_KEY or "
+                "GEMINI_API_KEY to enable AI generation."
+            )
+        _client = genai.Client(api_key=api_key)
+    return _client
 
 # Email type descriptions for better prompts
 EMAIL_TYPE_DESCRIPTIONS = {
@@ -189,7 +203,7 @@ email = de.Email(
     start_time = time.time()
 
     try:
-        response = client.models.generate_content(
+        response = get_client().models.generate_content(
             model="gemini-2.5-flash",
             contents=content_parts,
         )

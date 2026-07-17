@@ -9,9 +9,16 @@ from dash import html, dcc, callback, Input, Output, State, no_update, clientsid
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
 import dash_email as de
+from utils.ai_config import is_ai_enabled
 from utils.image_handler import save_multiple_images, cleanup_old_uploads
+from utils.showcase_templates import SHOWCASE_TYPES
 
 dash.register_page(__name__, path="/email-builder", name="Email Builder")
+
+# Without a Gemini key the builder still works, serving curated example
+# templates instead of generating them. Resolved once at import: the key comes
+# from the environment and cannot change while the app is running.
+AI_ENABLED = is_ai_enabled()
 
 # Email type categories with their options
 EMAIL_CATEGORIES = {
@@ -41,6 +48,37 @@ EMAIL_CATEGORIES = {
         {"value": "invitation", "label": "Invitation"},
     ],
 }
+
+
+def showcase_notice():
+    """Explain showcase mode. Renders nothing when AI generation is available."""
+    if AI_ENABLED:
+        return None
+    return dmc.Alert(
+        dmc.Stack(
+            gap=4,
+            children=[
+                dmc.Text(
+                    "This demo runs without an AI key, so it serves a curated set of example "
+                    "templates instead of generating new ones. Everything else is live: each "
+                    "example renders through real dash-email components, and the code panel "
+                    "shows exactly how it was built.",
+                    size="sm",
+                ),
+                dmc.Text(
+                    "Running this yourself? Set GOOGLE_API_KEY to unlock AI generation for "
+                    "every email type.",
+                    size="sm",
+                    c="dimmed",
+                ),
+            ],
+        ),
+        title="Showcase mode",
+        color="blue",
+        variant="light",
+        icon=DashIconify(icon="tabler:sparkles", width=20),
+        mb="lg",
+    )
 
 
 def create_chip_group(category_name, options):
@@ -94,7 +132,9 @@ default_email = de.Email(
                                     },
                                 ),
                                 de.EmailText(
-                                    "Choose an email category, add your requirements, and click Generate to create your email template with AI.",
+                                    "Choose an email category, add your requirements, and click Generate to create your email template with AI."
+                                    if AI_ENABLED
+                                    else "Choose an email type on the left, then load the example to see it rendered here alongside its source code.",
                                     style={
                                         "color": "#666666",
                                         "fontSize": "16px",
@@ -116,10 +156,14 @@ layout = dmc.Container(
     children=[
         dmc.Title("Email Builder", order=2, mb="md"),
         dmc.Text(
-            "Create professional email templates using AI. Select a type, add your content, and generate.",
+            "Create professional email templates using AI. Select a type, add your content, and generate."
+            if AI_ENABLED
+            else "Explore ready-made email templates. Pick a type below to see it rendered live, "
+                 "with the dash-email code that produced it.",
             c="dimmed",
             mb="lg",
         ),
+        showcase_notice(),
 
         dmc.Grid(
             gutter="lg",
@@ -163,6 +207,12 @@ layout = dmc.Container(
                                                                         opt["label"],
                                                                         value=opt["value"],
                                                                         size="sm",
+                                                                        # In showcase mode only curated
+                                                                        # types can be built.
+                                                                        disabled=(
+                                                                            not AI_ENABLED
+                                                                            and opt["value"] not in SHOWCASE_TYPES
+                                                                        ),
                                                                     )
                                                                     for opt in options
                                                                 ],
@@ -233,11 +283,14 @@ layout = dmc.Container(
 
                                         # Generate Button with loading state
                                         dmc.Button(
-                                            "Generate Email",
+                                            "Generate Email" if AI_ENABLED else "Load Example Template",
                                             id="generate-btn",
                                             fullWidth=True,
                                             size="lg",
-                                            leftSection=DashIconify(icon="tabler:sparkles", width=20),
+                                            leftSection=DashIconify(
+                                                icon="tabler:sparkles" if AI_ENABLED else "tabler:template",
+                                                width=20,
+                                            ),
                                             loaderProps={"type": "dots"},
                                         ),
                                     ],
@@ -711,7 +764,7 @@ clientside_callback(
     prevent_initial_call=True,
 )
 def generate_email(n_clicks, email_type, requirements, image_urls):
-    """Generate email using Gemini AI."""
+    """Generate an email with Gemini, or serve a curated example without a key."""
     if not n_clicks:
         return no_update, no_update, no_update, no_update, no_update, no_update, no_update
 
@@ -732,22 +785,32 @@ def generate_email(n_clicks, email_type, requirements, image_urls):
         )
 
     try:
-        from utils.gemini_handler import generate_email_content
+        if AI_ENABLED:
+            from utils.gemini_handler import generate_email_content
 
-        # Generate email content with image URLs
-        result = generate_email_content(
-            email_type=email_type,
-            user_content=requirements or "",
-            image_urls=image_urls if image_urls else None,
-        )
+            # Generate email content with image URLs
+            result = generate_email_content(
+                email_type=email_type,
+                user_content=requirements or "",
+                image_urls=image_urls if image_urls else None,
+            )
+        else:
+            from utils.showcase_templates import get_showcase_template
+
+            result = get_showcase_template(email_type)
 
         if "error" in result:
+            # A missing showcase template is an expected limit of demo mode,
+            # not a failure — say so rather than crying error.
             return (
                 dmc.Alert(
-                    f"Error generating email: {result['error']}",
-                    title="Generation Error",
-                    color="red",
-                    icon=DashIconify(icon="tabler:alert-triangle"),
+                    result["error"] if not AI_ENABLED
+                    else f"Error generating email: {result['error']}",
+                    title="No example for this type" if not AI_ENABLED else "Generation Error",
+                    color="yellow" if not AI_ENABLED else "red",
+                    icon=DashIconify(
+                        icon="tabler:info-circle" if not AI_ENABLED else "tabler:alert-triangle"
+                    ),
                 ),
                 no_update,
                 {},
