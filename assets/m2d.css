@@ -68,6 +68,38 @@ h3.m2d-heading {
     margin-bottom: 20px;
 }
 
+/* ── Email example previews ───────────────────────────────────────────────
+   The email itself always renders as it will be delivered (see the
+   [data-email-component="html"] rules in style.css), so the theme switch
+   styles the frame *around* the message rather than recolouring it. The
+   result reads as a message sitting on an inbox surface in either theme,
+   instead of a bare white rectangle butted against a dark page.
+
+   Scoped to the email root rather than the whole exec block on purpose: some
+   examples mix Mantine controls with the email in one block, and those
+   controls must keep the page's theme rather than be dragged onto the mat. */
+.m2d-block-exec [data-email-component="html"] {
+    border-radius: 10px;
+    overflow: hidden; /* clip the body's background to the rounded corners */
+    /* Named colour, not the `border: 1px solid` shorthand: that shorthand
+       resolves to currentColor, flashing a dark border on the frame before
+       Mantine stamps the colour-scheme attribute on :root. */
+    border: 1px solid #e9ecef;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+:root[data-mantine-color-scheme="light"] .m2d-block-exec [data-email-component="html"] {
+    border-color: #e9ecef;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+/* On a dark page the message is the brightest thing on screen. A light hairline
+   plus a deeper shadow keeps its edge from cutting off abruptly. */
+:root[data-mantine-color-scheme="dark"] .m2d-block-exec [data-email-component="html"] {
+    border-color: rgba(255, 255, 255, 0.09);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
 .m2d-strong {
     font-weight: 500
 }

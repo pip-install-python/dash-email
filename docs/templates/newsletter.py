@@ -46,11 +46,23 @@ component = de.Email([
                         de.EmailDivider(style={"margin": "30px 0"}),
                         de.EmailHeading("Quick Links", as_="h3"),
                         de.EmailText([
-                            de.EmailLink("Product updates", href="https://example.com"),
+                            de.EmailLink(
+                                "Product updates",
+                                href="https://example.com",
+                                style={"color": "#1971c2"},
+                            ),
                             " · ",
-                            de.EmailLink("Community forum", href="https://example.com"),
+                            de.EmailLink(
+                                "Community forum",
+                                href="https://example.com",
+                                style={"color": "#1971c2"},
+                            ),
                             " · ",
-                            de.EmailLink("Blog", href="https://example.com"),
+                            de.EmailLink(
+                                "Blog",
+                                href="https://example.com",
+                                style={"color": "#1971c2"},
+                            ),
                         ]),
                     ],
                 ),

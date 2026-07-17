@@ -85,6 +85,30 @@ body {
     box-sizing: border-box;
 }
 
+/* Email previews are deliberately isolated from the site's colour scheme.
+   An email carries its own colours in the message: a recipient sees them the
+   same way whatever theme this page happens to be in. So anything a template
+   leaves unset has to fall back to what a mail client would use, not to what
+   the surrounding page uses — otherwise dark mode puts Mantine's light-grey
+   body text on a template's hard-coded white card, showing a preview no
+   recipient will ever receive.
+
+   Defaults only: components carry inline styles, which win over these rules,
+   so a template that sets its own colours is untouched. */
+[data-email-component="html"] {
+    color: #1a1a2e;
+    background-color: #ffffff; /* fallback for templates with no EmailBody bg */
+    color-scheme: light; /* keep the UA from dark-mode-ing scrollbars/controls */
+}
+
+/* Links need saying explicitly: an <a> takes its colour from the UA/theme
+   rather than inheriting it, so the rule above never reaches one. A mail
+   client gives an unstyled link its own default blue; this stands in for that
+   default and clears AA on both white and near-white template surfaces. */
+[data-email-component="html"] [data-email-component="link"] {
+    color: #1971c2;
+}
+
 /* Tab panel transitions */
 .mantine-Tabs-panel {
     animation: fadeIn 0.2s ease;
