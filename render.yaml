@@ -8,7 +8,10 @@
 #   2. GOOGLE_API_KEY powers AI generation in /email-builder; RESEND_API_KEY
 #      powers sending. Both are optional — the docs pages work without them,
 #      the builder degrades gracefully.
-#   3. If you add a custom domain later, update DOCS_BASE_URL in
+#   3. CROSS_APP_WEBHOOK_SECRET is the shared 2plot.ai network secret — set
+#      it to the same value every other satellite uses, or this app's traffic
+#      never reaches the /traffic hub (see lib/traffic_reporter.py).
+#   4. If you add a custom domain later, update DOCS_BASE_URL in
 #      lib/constants.py (drives sitemap.xml/llms.txt absolute URLs).
 services:
   - type: web
@@ -27,3 +30,14 @@ services:
         sync: false
       - key: RESEND_API_KEY
         sync: false
+      - key: CROSS_APP_WEBHOOK_SECRET
+        sync: false
+      # This app's 2plot network-directory key (2plotai lib/network_directory)
+      # — the hub health-sweeps it and labels its /traffic series from it.
+      - key: SATELLITE_APP_KEY
+        value: email
+      # Point the hit ledger at a mounted disk to survive deploys (without a
+      # disk, a deploy loses the day-so-far ledger and the day's totals start
+      # over). Uncomment together with a `disk:` block on this service:
+      # - key: TRAFFIC_ANALYTICS_FILE
+      #   value: /var/data/satellite_traffic.jsonl

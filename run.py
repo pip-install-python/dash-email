@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 
 from components.appshell import create_appshell
 from lib.constants import DOCS_BASE_URL
+from lib.traffic_reporter import register_traffic_reporting
 
 from dash_improve_my_llms import (
     add_llms_routes,
@@ -99,6 +100,11 @@ server = app.server
 @server.route("/healthz")
 def healthz():
     return {"status": "ok", "dash": dash.__version__}
+
+
+# Reports this app's hourly traffic rollup to 2plot.ai's /traffic hub —
+# see lib/traffic_reporter.py for the contract.
+register_traffic_reporting(app)
 
 
 if __name__ == "__main__":
