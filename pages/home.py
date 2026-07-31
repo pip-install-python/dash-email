@@ -82,6 +82,67 @@ def create_feature_card(feature):
     )
 
 
+def create_video_embed():
+    """The demo video, in a 16:9 box that scales with the container.
+
+    `youtube-nocookie.com` is the privacy-preserving host: it serves the same
+    player but sets no tracking cookie until the viewer actually presses play,
+    which keeps a documentation page from needing a consent banner.
+
+    The shape is held by `aspectRatio` on the wrapper, with the iframe at
+    100% x 100% inside it — not a fixed pixel height, which would letterbox on
+    phones and crop on wide screens. `maxWidth` keeps it from ballooning past
+    the text column on a desktop.
+    """
+    return dmc.Stack(
+        align="center",
+        gap="md",
+        mb=50,
+        children=[
+            dmc.Title("See it in action", order=2, ta="center"),
+            dmc.Text(
+                "Build, preview and send emails inside your Dash app.",
+                ta="center",
+                c="dimmed",
+            ),
+            dmc.Paper(
+                withBorder=True,
+                radius="md",
+                shadow="sm",
+                p=0,
+                style={
+                    "width": "100%",
+                    "maxWidth": 860,
+                    "aspectRatio": "16 / 9",
+                    "overflow": "hidden",
+                },
+                children=html.Iframe(
+                    src="https://www.youtube-nocookie.com/embed/_30EHZ1-2vs",
+                    title="Dash Email: Build, Preview & Send Emails Inside Your Dash App",
+                    style={
+                        "width": "100%",
+                        "height": "100%",
+                        "border": "none",
+                        "display": "block",
+                    },
+                    # `fullscreen` rides in `allow` rather than as a separate
+                    # `allowfullscreen` attribute: Dash's html.Iframe exposes
+                    # no such prop (nor `loading`) and raises TypeError on
+                    # unknown kwargs. The Permissions-Policy token is the
+                    # modern equivalent and is what makes the player's
+                    # fullscreen button work instead of sitting there inert.
+                    allow=(
+                        "accelerometer; autoplay; clipboard-write; "
+                        "encrypted-media; gyroscope; picture-in-picture; "
+                        "web-share; fullscreen"
+                    ),
+                    referrerPolicy="strict-origin-when-cross-origin",
+                ),
+            ),
+        ],
+    )
+
+
 layout = dmc.Container(
     size="lg",
     py="xl",
@@ -136,6 +197,9 @@ layout = dmc.Container(
                 ),
             ],
         ),
+
+        # Video Section
+        create_video_embed(),
 
         # Features Section
         dmc.Title("Features", order=2, ta="center", mb="lg"),

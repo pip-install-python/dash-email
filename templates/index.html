@@ -1,53 +1,143 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <!-- CHARSET MUST BE FIRST.
+         The HTML spec requires the encoding declaration to appear entirely
+         within the first 1024 bytes of the document. Dash emits its own
+         `<meta charset="UTF-8">` inside {%metas%}, but it comes *after* the
+         per-page description/og/twitter tags that register_page() prepends —
+         which on this site already reaches byte 1008 on /components/email-structure.
+         One longer page description and it goes non-conforming.
+         Declaring it here pins it near byte 60 whatever Dash adds later. The
+         duplicate is deliberate and harmless: the first declaration wins. -->
+    <meta charset="utf-8">
+
+    <!-- Dash emits, per page, from register_page(): description, og:title,
+         og:type, og:description, og:image and the full twitter:* set. Do NOT
+         restate any of those below — a second, site-level copy is strictly
+         worse than the page-level one, and search engines pick between
+         duplicates arbitrarily. -->
     {%metas%}
     <title>{%title%}</title>
     {%favicon%}
     {%css%}
 
-    <!-- Primary SEO -->
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Dash Email — a Plotly Dash component library wrapping React Email patterns. Build, preview, and send HTML emails from Python.">
+    <!-- Site-level tags Dash does NOT emit -->
     <meta name="keywords" content="dash, plotly, email, react-email, email templates, python, components, newsletter, transactional email">
     <meta name="author" content="Pip Install Python LLC">
-    <link rel="canonical" href="https://dash-email.onrender.com">
-
-    <!-- Open Graph -->
-    <meta property="og:type" content="website">
-    <meta property="og:title" content="Dash Email — Email components for Plotly Dash">
-    <meta property="og:description" content="15 email-safe Dash components plus an AI-powered email builder. Build, preview, and send HTML emails from Python.">
-    <meta property="og:url" content="https://dash-email.onrender.com">
     <meta property="og:site_name" content="Dash Email">
+    <meta property="og:locale" content="en_US">
 
-    <!-- Twitter -->
-    <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="Dash Email — Email components for Plotly Dash">
-    <meta name="twitter:description" content="15 email-safe Dash components plus an AI-powered email builder. Build, preview, and send HTML emails from Python.">
+    <!-- Keeps canonical / og:url / twitter:url correct across CLIENT-SIDE
+         navigation only. dash-improve-my-llms 2.3.3 emits all three
+         server-side per route (tagged data-dimll-prerender), so the raw
+         document is already right — this exists solely because Dash routes
+         without firing a navigation event, which leaves those tags describing
+         the page the visitor first landed on.
 
-    <!-- Structured data -->
+         UPDATE-ONLY, deliberately: it never creates a tag the server did not
+         send. Creating one would put a second <link rel="canonical"> on the
+         page whenever the package's prerender path did not run, and two
+         canonicals is worse than a stale one — engines may ignore both.
+         An unknown path therefore stays canonical-less, which is correct.
+
+         CANONICAL_ORIGIN is substituted from lib/constants.py at startup, not
+         read from location.origin, so hits on the *.onrender.com hostname
+         consolidate onto email.2plot.dev instead of competing with it. -->
+    <script>
+    (function () {
+        var CANONICAL_ORIGIN = '__CANONICAL_ORIGIN__';
+
+        function update(selector, attr, value) {
+            var el = document.head.querySelector(selector);
+            if (el) { el.setAttribute(attr, value); }
+        }
+
+        function canonicalUrl() {
+            var path = window.location.pathname || '/';
+            // Collapse a trailing slash so /templates and /templates/ do not
+            // become two indexed URLs. The root keeps its slash.
+            if (path.length > 1 && path.charAt(path.length - 1) === '/') {
+                path = path.slice(0, -1);
+            }
+            // Query strings and fragments are never part of the canonical.
+            return CANONICAL_ORIGIN + path;
+        }
+
+        function sync() {
+            var url = canonicalUrl();
+            // Every one of these is emitted server-side; we only refresh them.
+            update('link[rel="canonical"]', 'href', url);
+            update('meta[property="og:url"]', 'content', url);
+            update('meta[property="twitter:url"]', 'content', url);
+        }
+
+        // Dash routes client-side and fires no navigation event, so the only
+        // reliable hook is patching the History API itself.
+        ['pushState', 'replaceState'].forEach(function (name) {
+            var original = history[name];
+            history[name] = function () {
+                var result = original.apply(this, arguments);
+                sync();
+                return result;
+            };
+        });
+        window.addEventListener('popstate', sync);
+
+        sync();
+    })();
+    </script>
+
+    <!-- Structured data.
+         SoftwareSourceCode, not SoftwareApplication: this describes an
+         open-source library you import, not a hosted app you sign up for.
+         Every value here is checked against the actual package — do not add
+         ratings, prices or download counts that nothing measures. -->
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
-        "@type": "SoftwareApplication",
-        "name": "Dash Email",
-        "applicationCategory": "DeveloperApplication",
-        "operatingSystem": "Any",
-        "url": "https://dash-email.onrender.com",
-        "description": "A Plotly Dash component library wrapping React Email patterns for building, previewing, and sending HTML emails from Python.",
-        "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
-        "author": {
-            "@type": "Organization",
-            "name": "Pip Install Python LLC",
-            "url": "https://pip-install-python.com"
-        }
+        "@graph": [
+            {
+                "@type": "SoftwareSourceCode",
+                "name": "dash-email",
+                "description": "A Plotly Dash component library wrapping React Email patterns: 15 email-safe components for building, previewing, and sending HTML emails from Python.",
+                "url": "__CANONICAL_ORIGIN__",
+                "codeRepository": "https://github.com/pip-install-python/dash-email",
+                "programmingLanguage": ["Python", "JavaScript"],
+                "runtimePlatform": "Python 3.9+, Dash 4.1+",
+                "license": "https://opensource.org/licenses/MIT",
+                "author": {
+                    "@type": "Organization",
+                    "name": "Pip Install Python LLC",
+                    "url": "https://pip-install-python.com"
+                }
+            },
+            {
+                "@type": "WebSite",
+                "name": "Dash Email",
+                "url": "__CANONICAL_ORIGIN__",
+                "publisher": {
+                    "@type": "Organization",
+                    "name": "Pip Install Python LLC",
+                    "url": "https://pip-install-python.com"
+                }
+            }
+        ]
     }
     </script>
 
     <!-- LLM discovery -->
-    <meta name="llms-txt" content="https://dash-email.onrender.com/llms.txt">
-    <meta name="llms-sitemap" content="https://dash-email.onrender.com/sitemap.xml">
+    <meta name="llms-txt" content="__CANONICAL_ORIGIN__/llms.txt">
+    <meta name="llms-sitemap" content="__CANONICAL_ORIGIN__/sitemap.xml">
+
+    <!-- NO og:image yet, deliberately.
+         Dash emits `og:image` and `twitter:image` from register_page(), both
+         currently empty because no brand image exists. An empty tag beats a
+         404 — a broken image URL is worse than none for every link preview.
+         To fix properly: add assets/og-image.png at 1200x630, then pass
+         `image="og-image.png"` to dash.register_page(...) in pages/markdown.py
+         so each page advertises it. Do not hard-code one here; it would
+         duplicate the tag Dash already emits. -->
 </head>
 <body>
     {%app_entry%}
@@ -60,9 +150,24 @@
         <div style="max-width: 640px; margin: 40px auto; font-family: sans-serif;">
             <h1>Dash Email</h1>
             <p>
-                A Plotly Dash component library wrapping React Email patterns.
-                This documentation site requires JavaScript, but machine-readable
-                versions are available:
+                A Plotly Dash component library wrapping React Email patterns —
+                15 email-safe components for building, previewing, and sending
+                HTML emails from Python. MIT licensed, Python 3.9+, Dash 4.1+.
+            </p>
+            <!-- Deliberately does not lead with "requires JavaScript".
+                 dash-improve-my-llms 2.3.3 prerenders real prose for
+                 crawlers, so that framing is misleading for the readers most
+                 likely to act on it. JS-disabled humans still get the links
+                 below, which is the part that was ever useful.
+
+                 Note this does NOT make the fleet runbook's
+                 `grep -c "requires JavaScript"` return 0: the package emits
+                 "Interactive version requires JavaScript." in its own
+                 crawler-facing footer, so that check cannot reach 0 on 2.3.3
+                 regardless of what this template says. -->
+            <p>
+                The interactive documentation renders in the browser. These
+                machine-readable versions are always available:
             </p>
             <ul>
                 <li><a href="/llms.txt"><strong>llms.txt</strong></a> — LLM-friendly documentation</li>
@@ -71,6 +176,7 @@
             </ul>
             <p>
                 Source code: <a href="https://github.com/pip-install-python/dash-email">github.com/pip-install-python/dash-email</a>
+                · Package: <a href="https://pypi.org/project/dash-email/">pypi.org/project/dash-email</a>
             </p>
         </div>
     </noscript>

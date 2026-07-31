@@ -1,6 +1,6 @@
 # Render blueprint — dash-email docs (single web service, docker runtime).
 # Auto-deploys on push to main. Serves the component documentation + the
-# /email-builder app on the default *.onrender.com URL.
+# /email-builder app, fronted by https://email.2plot.dev.
 #
 # FIRST DEPLOY CHECKLIST:
 #   1. Create the Blueprint from this repo; fill every `sync: false` secret in
@@ -10,9 +10,18 @@
 #      the builder degrades gracefully.
 #   3. CROSS_APP_WEBHOOK_SECRET is the shared 2plot.ai network secret — set
 #      it to the same value every other satellite uses, or this app's traffic
-#      never reaches the /traffic hub (see lib/traffic_reporter.py).
-#   4. If you add a custom domain later, update DOCS_BASE_URL in
-#      lib/constants.py (drives sitemap.xml/llms.txt absolute URLs).
+#      never reaches the /traffic hub (see lib/satellite_reporter.py).
+#   4. DNS: point `email.2plot.dev` at this service with a CNAME to the
+#      Render hostname Render shows once the domain below is accepted. Until
+#      that resolves, the service is only reachable on *.onrender.com — and
+#      every canonical URL will already be advertising email.2plot.dev, which
+#      is intentional (see note on DASH_EMAIL_BASE_URL below).
+#   5. Register the satellite with the network — three separate places, each
+#      of which fails silently if missed:
+#        a. 2plot.ai env `PULSE_POLL_TARGETS` += `email=https://email.2plot.dev/healthz`
+#        b. 2plotai `lib/network_directory.py` — add the `email` key so
+#           /traffic labels the series instead of showing a bare slug
+#        c. the ad network keys off AD_APP_ID (`dash-email`) separately
 services:
   - type: web
     name: dash-email-docs
@@ -22,7 +31,20 @@ services:
     dockerContext: .
     healthCheckPath: /healthz
     autoDeploy: true
+    # Render provisions the certificate once the CNAME resolves. The
+    # *.onrender.com hostname keeps working and is NOT the canonical origin —
+    # every page advertises email.2plot.dev, so hits on the Render hostname
+    # consolidate onto the custom domain rather than competing with it.
+    domains:
+      - email.2plot.dev
     envVars:
+      # Drives every absolute URL the app emits: <link rel="canonical">,
+      # og:url, sitemap.xml, robots.txt and the llms.txt links. It matches
+      # DEFAULT_BASE_URL in lib/constants.py, so this entry is belt-and-braces
+      # — set it explicitly here so a preview environment can override it
+      # without editing code.
+      - key: DASH_EMAIL_BASE_URL
+        value: https://email.2plot.dev
       - key: WEB_WORKERS
         value: "1"
       # --- Secrets (set in the Render dashboard) ---

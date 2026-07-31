@@ -41,7 +41,7 @@ setup(
         "Changelog": "https://github.com/pip-install-python/dash-email/releases",
     },
     install_requires=[
-        "dash>=4.2.0",
+        "dash>=4.1",
     ],
     extras_require={
         "demo": [

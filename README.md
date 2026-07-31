@@ -8,12 +8,21 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/dash-email?color=blue)](https://pypi.org/project/dash-email/)
 [![Python](https://img.shields.io/pypi/pyversions/dash-email)](https://pypi.org/project/dash-email/)
-[![Dash 4.2+](https://img.shields.io/badge/Dash-4.2%2B-1a1a2e?logo=plotly&logoColor=white)](https://dash.plotly.com/)
+[![Dash 4.1+](https://img.shields.io/badge/Dash-4.1%2B-1a1a2e?logo=plotly&logoColor=white)](https://dash.plotly.com/)
+[![CI](https://github.com/pip-install-python/dash-email/actions/workflows/ci.yml/badge.svg)](https://github.com/pip-install-python/dash-email/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/WEnZR35mrK)
 [![YouTube](https://img.shields.io/badge/YouTube-%402plotai-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/channel/UC6Bmo0t0ZUpU_xKBYW0bJuQ)
 
-**[Documentation](https://pip-install-python.com)** · [Discord](https://discord.gg/WEnZR35mrK) · [YouTube](https://www.youtube.com/channel/UC6Bmo0t0ZUpU_xKBYW0bJuQ) · [GitHub](https://github.com/pip-install-python/dash-email)
+**[Documentation](https://email.2plot.dev)** · [Discord](https://discord.gg/WEnZR35mrK) · [YouTube](https://www.youtube.com/channel/UC6Bmo0t0ZUpU_xKBYW0bJuQ) · [GitHub](https://github.com/pip-install-python/dash-email)
+
+<br/>
+
+### ▶️ Video demo
+
+[![Dash Email: Build, Preview & Send Emails Inside Your Dash App](https://img.youtube.com/vi/_30EHZ1-2vs/maxresdefault.jpg)](https://youtu.be/_30EHZ1-2vs)
+
+**[Dash Email: Build, Preview & Send Emails Inside Your Dash App](https://youtu.be/_30EHZ1-2vs)** — the components, the live preview, and the AI builder end to end.
 
 <br/>
 
@@ -33,13 +42,15 @@ _Maintained by **[Pip Install Python LLC](https://pip-install-python.com)**._
 - **AI-powered builder** — the bundled `/email-builder` app generates templates from a plain-English prompt via Google Gemini and exports ready-to-paste Python.
 - **Send & schedule** — integrated [Resend](https://resend.com) support for single sends, batches up to 100 recipients, and scheduling.
 
-> ⚠️ dash-email is in early release (0.0.x). The component API is stable, but the AI builder and sending utilities are actively evolving.
+> ⚠️ dash-email is in early release (0.x). The component API is stable, but the AI builder and sending utilities are actively evolving. See [CHANGELOG.md](./CHANGELOG.md) for what has shipped.
 
 ## Installation
 
 ```bash
 pip install dash-email
 ```
+
+Requires `dash>=4.1`. See [Dash compatibility](#dash-compatibility) for the tested matrix.
 
 ## Quick Start
 
@@ -86,7 +97,7 @@ if __name__ == "__main__":
 
 ## Documentation
 
-### 📚 **[pip-install-python.com](https://pip-install-python.com)**
+### 📚 **[email.2plot.dev](https://email.2plot.dev)**
 
 Run the full documentation site — component pages with isolated live examples, props tables, and the AI email builder — locally:
 
@@ -160,6 +171,41 @@ Both keys are optional: the docs run without them and the builder degrades grace
 
 Full auto-generated props tables live on each component's documentation page.
 
+## Dash compatibility
+
+`dash-email` targets **Dash 4.1 and up**. That range is verified, not assumed —
+`scripts/compat_matrix.py` builds a throwaway virtualenv per Dash version, installs the
+full documentation site into each, and runs the smoke suite there:
+
+```bash
+python scripts/compat_matrix.py                    # 4.1.0, 4.2.0, 4.3.0, 4.4.1
+python scripts/compat_matrix.py 4.4.1 --backends flask fastapi
+python scripts/compat_matrix.py --local            # offline: use interpreters you already have
+```
+
+Results land in [COMPATIBILITY.md](./COMPATIBILITY.md) — all four versions currently pass
+59/59. The per-version harness is `scripts/smoke_test.py`, which also runs standalone:
+
+```bash
+python scripts/smoke_test.py
+```
+
+It checks that all 15 components are exported and that a full email template survives
+Dash's JSON encoder; that every markdown page registered a route with no duplicate paths;
+that every page layout builds and serialises; that every route plus `/_dash-layout`,
+`/_dash-dependencies`, `/healthz`, `/llms.txt`, `/robots.txt` and `/sitemap.xml` answers
+over Flask's test client; that every inline clientside callback, every `assets/*.js` file,
+and the committed component bundle all parse under `node --check`; and an `[seo]` group
+asserting every route serves its own `<title>` and exactly one correct `<link
+rel="canonical">` in the raw HTML, that no head tag Dash already emits is duplicated, that
+the charset declaration falls inside the spec's first 1024 bytes, that `robots.txt`
+contains no self-contradicting group, and that the sitemap covers every route. No socket,
+no browser.
+
+The same matrix runs in [GitHub Actions](.github/workflows/ci.yml) on every push and PR,
+which additionally builds the wheel, installs it into a clean venv with **nothing but
+Dash present**, and imports it on Python 3.9 → 3.13.
+
 ## Development
 
 ```bash
@@ -175,19 +221,44 @@ npm run extract-meta   # regenerate Python wrappers → dash_email/*.py
 pip install -r requirements.txt
 pip install -e .
 python run.py          # docs + builder on :8054
+
+# Test
+python scripts/smoke_test.py       # 59 checks, no browser
+python scripts/check_release.py    # version drift, stale bundle, packaging
+pytest tests/
+
+# Build a distribution
+python -m build
 ```
 
 The React sources in `src/lib/components/*.react.js` are the source of truth — the Python classes in `dash_email/` are generated from their PropTypes by `dash-generate-components`. The built bundle and wrappers are committed so git-based deploys (Render) work without a node toolchain.
 
+**After editing `src/lib/components/*.react.js` you must run both `npm run build` and `npm run extract-meta`**, and commit the regenerated artifacts in the same commit — `check_release.py` compares git commit timestamps and flags a bundle older than its source.
+
+The version lives in three files: `package.json` (which `setup.py` reads), `dash_email/package.json` (which `dash_email.__version__` reads, regenerated by `npm run extract-meta`), and `lib/constants.py`. `check_release.py` fails if they drift.
+
+## Releasing
+
+Tag-driven. `git tag -a vX.Y.Z && git push origin vX.Y.Z` runs [`release.yml`](.github/workflows/release.yml): it asserts the tag matches `package.json`, re-runs the consistency and smoke checks, builds, publishes to PyPI over **OIDC trusted publishing** (no API token stored anywhere), and opens a GitHub Release with that version's CHANGELOG section attached. A `workflow_dispatch` dry run publishes to TestPyPI instead.
+
+Full runbook: [RELEASING.md](./RELEASING.md).
+
 ## Deployment
 
-The repo ships a `render.yaml` blueprint and `Dockerfile` — create a Render Blueprint from the repo, fill the `sync: false` secrets in the dashboard, and it auto-deploys on push to main with a `/healthz` health check.
+The documentation site runs at **[email.2plot.dev](https://email.2plot.dev)** on Render. The repo ships a `render.yaml` blueprint and `Dockerfile` — create a Render Blueprint from the repo, fill the `sync: false` secrets in the dashboard, point the `email.2plot.dev` CNAME at the service, and it auto-deploys on push to main with a `/healthz` health check.
+
+The canonical origin lives in exactly one place — `DEFAULT_BASE_URL` in `lib/constants.py` (override per-environment with `DASH_EMAIL_BASE_URL`). `templates/index.html` carries `__CANONICAL_ORIGIN__` tokens that `run.py` substitutes at startup, so the canonical link, `og:url`, the JSON-LD, `sitemap.xml`, `robots.txt` and the llms.txt links cannot drift apart. Full runbook: [RELEASING.md](./RELEASING.md).
 
 ## Requirements
 
-- Python >= 3.9
-- Dash >= 4.2.0
-- Node.js >= 18 (only for building components from source)
+- Python >= 3.9  (the documentation site itself needs >= 3.10 — see below)
+- Dash >= 4.1
+- Node.js >= 18 — only to rebuild the JS bundle
+
+The **package** needs only Python 3.9+ and Dash 4.1+; every combination in that range is
+verified in CI. Running the **documentation site** from source additionally needs Python
+3.10+, because `python-frontmatter` imports `typing.TypeGuard`. That floor does not apply
+to `pip install dash-email`.
 
 ## Community & support
 
@@ -199,11 +270,16 @@ Come build with us.
 
 ## More from Pip Install Python LLC
 
-| Project                                             | What it is                        |
-|-----------------------------------------------------|-----------------------------------|
-| 🧩 **[Component Library](https://2plot.dev)**       | The full Dash component catalogue |
-| ⛵️ **[piratesbargain](https://piratesbargain.com)** | E-commerce tool focused app       |
-| 🤖 **[ai-agent.buzz](https://ai-agent.buzz)**       | ai canvas / bucket tool           |
+dash-email is one of several tools built and maintained by **Pip Install Python LLC**:
+
+| Project                                                          | What it is                                        |
+|------------------------------------------------------------------|---------------------------------------------------|
+| 📊 **[2plot.ai](https://2plot.ai)**                              | The network hub — data apps, analytics, sign-in   |
+| 🎬 **[2plot.media](https://2plot.media)**                        | Videography application                           |
+| 🧩 **[2plot.dev](https://2plot.dev)**                            | The full Dash component catalogue                 |
+| 🤖 **[ai-agent.buzz](https://ai-agent.buzz)**                    | Infinite AI canvas                                |
+| ⛵️ **[PiratesBargain](https://piratesbargain.com/shop)**         | E-commerce / digital commerce                     |
+| 📚 **[Pip Install Python](https://pip-install-python.com)**      | Open-source docs index for the Python & Dash ecosystem |
 
 ## License
 

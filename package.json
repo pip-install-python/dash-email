@@ -1,6 +1,6 @@
 {
   "name": "dash_email",
-  "version": "0.0.1",
+  "version": "0.2.0",
   "description": "Dash components wrapping React Email for building email templates",
   "repository": {
     "type": "git",

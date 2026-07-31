@@ -79,3 +79,10 @@ Thumbs.db
 # App data
 assets/uploads/
 visitor_analytics.json
+# 2plot.ai traffic ledger (lib/traffic_reporter.py) — local hit log, never committed
+satellite_traffic.jsonl
+satellite_traffic.tmp
+
+# Compatibility matrix scratch (venvs + raw smoke JSON)
+.compat/
+smoke-*.json

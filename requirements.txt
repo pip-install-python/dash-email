@@ -1,5 +1,7 @@
 # --- Component library ---
-dash>=4.2.0
+# The tag is what scripts/compat_matrix.py and .github/workflows/ci.yml strip
+# so each run resolves against the Dash version under test, not this floor.
+dash>=4.1                     # COMPAT-MATRIX: dash
 
 # --- Documentation site ---
 dash-mantine-components>=2.7.0
@@ -8,7 +10,7 @@ markdown2dash>=0.1.2
 python-frontmatter>=1.0.0
 pydantic>=2.3.0
 python-dotenv>=1.0.0
-dash-improve-my-llms[flask]>=2.0.0
+dash-improve-my-llms[flask]>=2.3.3
 requests>=2.27.1              # 2plot.dev ad-network client (lib/ad_client.py)
 
 # --- Email Builder app (/email-builder) ---

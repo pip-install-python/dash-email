@@ -1,8 +1,8 @@
 # Dash Email - Project Status Reference
 
-**Version:** 0.0.1
-**Last Updated:** January 2026
-**Status:** Ready for PyPI Release
+**Version:** 0.2.0
+**Last Updated:** July 2026
+**Status:** Ready for PyPI Release — Dash 4.1+ verified in CI (see COMPATIBILITY.md)
 
 ---
 
