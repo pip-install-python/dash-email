@@ -9,6 +9,19 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# Without this, NONE of the app's boot diagnostics reach the platform's log
+# stream. Python block-buffers stdout when it is a pipe rather than a TTY, and
+# gunicorn never flushes it — so "[dash-email] Starting Dash 4.4.1", the
+# satellite-reporter state line, and the network-bulletin wired/off line all
+# sat in a buffer while Render's log view showed only gunicorn's own output.
+#
+# That is not cosmetic. The bulletin line exists precisely so you can tell at a
+# glance which of the two states a deployment is in, and its absence is how
+# email.2plot.dev shipped with NETWORK_BULLETIN_URL unset — the viewer rendered
+# an empty "What's new" panel and the one log line that would have said so was
+# never printed.
+ENV PYTHONUNBUFFERED=1
+
 RUN pip install --no-cache-dir --upgrade pip
 
 COPY requirements.txt .

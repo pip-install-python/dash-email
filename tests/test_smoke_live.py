@@ -299,3 +299,37 @@ def test_a_broken_local_surface_still_fails_the_deploy(
     monkeypatch.setattr(smoke, "fetch", no_sitemap)
     assert wired.main(BASE) > 0
     assert "FAIL  /sitemap.xml responds 200" in capsys.readouterr().out
+
+
+def test_an_unwired_bulletin_warns_but_does_not_fail_the_deploy(
+    wired, smoke, capsys
+):
+    """How email.2plot.dev shipped with an empty "What's new" panel.
+
+    The conftest pins `NETWORK_BULLETIN_URL` to "" for the whole suite, so the
+    in-process app IS the unwired case — no monkeypatching needed to reproduce
+    it. Both banner panels still render (the package falls back to one generic
+    tip and "No announcements."), which is why nothing looked broken and why
+    only a check can report it.
+
+    Warn, not fail: a satellite may legitimately run without a bulletin, and a
+    hub outage must never fail a deploy.
+    """
+    assert wired.main(BASE) == 0
+    output = capsys.readouterr().out
+    assert "warn  the network bulletin is wired" in output
+    assert any("bulletin" in w for w in wired.warnings)
+
+
+def test_a_wired_bulletin_raises_no_warning(wired, smoke, monkeypatch, capsys):
+    """The positive case, so the check cannot pass by always warning."""
+    original = smoke.fetch
+
+    def announced(url, user_agent=smoke.BROWSER_UA, accept=None):
+        status, body, headers = original(url, user_agent, accept)
+        return status, body.replace("No announcements.", "Launched a Federated Network"), headers
+
+    monkeypatch.setattr(smoke, "fetch", announced)
+    assert wired.main(BASE) == 0
+    output = capsys.readouterr().out
+    assert "ok    the network bulletin is wired" in output
