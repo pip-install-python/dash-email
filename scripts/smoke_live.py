@@ -325,6 +325,25 @@ def main(base: str) -> int:
         header(view_headers, "Content-Type") or "no Content-Type",
     )
     check("the viewer renders the network wordmark", "mk-wordmark" in view)
+
+    # The hub bulletin, which supplies BOTH banner panels — the "What's new"
+    # announcements and the "Tips for getting started" list (the package renders
+    # tips from `bulletin["tips"]`, falling back to one generic line). With
+    # NETWORK_BULLETIN_URL unset the panels still render, so nothing looks
+    # broken: you get one generic tip and "No announcements." That is exactly
+    # how this host went live unwired.
+    #
+    # WARN, not fail, and for a different reason than the peer checks below: a
+    # satellite may legitimately run with no bulletin, and a hub outage must
+    # never fail a deploy. This is the deploy telling you a panel is empty,
+    # which is the only place that fact is ever surfaced.
+    check(
+        "the network bulletin is wired (banner shows hub announcements)",
+        "No announcements." not in view,
+        "NETWORK_BULLETIN_URL is unset or unreachable — the viewer's "
+        "\"What's new\" panel is empty and its tips are the built-in fallback",
+        fatal=False,
+    )
     check(
         "the viewer is noindex",
         bool(re.search(r'<meta[^>]+name="robots"[^>]+noindex', view)),
