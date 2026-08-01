@@ -11,7 +11,123 @@ matters.
 
 ## [Unreleased]
 
-### Changed
+## [0.2.1] — 2026-08-01
+
+**The component library is unchanged in this release.** Every entry below is
+the documentation site at [email.2plot.dev](https://email.2plot.dev) and the
+machinery around it. The version moves anyway because `package.json`,
+`dash_email/package.json` and `lib/constants.APP_VERSION` are pinned to each
+other by `scripts/check_release.py`, and the docs site reads the third.
+
+### Fixed — the share card was blank on every page, twice over
+
+`email.2plot.dev` served **two empty `og:image` tags** on every page. Measured
+live, and invisible from inside the app, because nobody sees their own unfurls.
+Two independent causes, both now fixed and both now tested:
+
+- **No page passed `image_url`.** Dash builds `og:image` and `twitter:image`
+  for every page from `register_page` and emits `content=""` when it is given
+  neither an explicit URL nor an inferable asset (`dash/_pages.py`). An EMPTY
+  tag unfurls *worse* than a missing one: scrapers treat the empty value as the
+  declared image and render a blank card, then cache the failure — so the first
+  person to share a link poisons it for everyone. `lib/constants.OG_IMAGE_URL`
+  is now passed at every `register_page` call site (`pages/home.py`,
+  `pages/email_builder.py`, `pages/markdown.py`).
+- **`templates/index.html` named a Dash placeholder inside an HTML comment.**
+  Dash resolves `{%…%}` by plain string replacement over the whole template,
+  comments included, so the comment explaining the charset rule was silently
+  emitting a second copy of the entire per-page meta block. Invisible in a
+  browser; perfectly visible to anything reading the raw HTML.
+  `tests/test_social_card.py::test_no_dash_placeholder_is_named_inside_a_comment`
+  now fails on any placeholder named in any comment.
+
+The card itself is rendered by `scripts/make_social_card.py` (1200×630, the
+Open Graph ideal) and hosted on `cdn.2plot.ai`, **not** by this app — a card the
+app serves is fetched at unfurl time and times out on a cold container.
+
+### Fixed — gunicorn was pinned under two CVEs
+
+The production server was 21.2.0, carrying CVE-2024-6827 and CVE-2024-1135
+(HTTP request smuggling), held there by `markdown2dash` 0.1.2's transitive
+`gunicorn>=21.2.0,<22.0.0` — a markdown parser pinning a WSGI server. pip
+cannot resolve that against a `>=23` floor, so `markdown2dash` has been removed
+from `requirements.txt` and is installed `--no-deps` alongside it. The
+Dockerfile, `ci.yml`, `release.yml`, `scripts/compat_matrix.py` and the README
+all do the same pair, and CI asserts the resulting gunicorn version **inside
+the built image**, which is what keeps the dodge honest.
+
+### Changed — site identity, one string on every surface
+
+The site published `# Dash Email` as its `/llms.txt` H1 and `Dash Email | …` as
+every share-card headline: a name that matches no package on PyPI and no
+repository on GitHub. `lib/constants.SITE_BRAND` is now
+`dash-email — email components for Dash`, and it reaches `Dash(title=)`,
+`register_page_metadata(path="/")` (the H1 and the llms viewer's brand chip),
+`og:site_name`, the JSON-LD, the `<noscript>` block, the manifest, the README
+H1 and `pages/home.py`'s `LLMS_DOC`. `PAGE_TITLE_PREFIX` is derived from
+`SITE_SHORT_NAME` so the two cannot drift. Same shape as
+`dash-leaflet2 — Leaflet 2 maps for Dash`.
+
+Requires `dash-improve-my-llms>=2.3.4`: `resolve_site_title` arrived there, and
+it *skips* generic candidates ("Home", "Index", "Dash") rather than publishing
+them — which is exactly why an unstated identity fails silently.
+
+### Changed — the internal-traffic contract, both halves
+
+Per <https://2plot.ai/docs/satellite-analytics>: a request carrying
+`2plot-internal` is network machinery and is counted nowhere.
+
+- *inbound* — `lib/analytics_tracker.py` drops token-carrying requests at
+  **write** time, before device detection and before bot classification. Doing
+  it at read time would file the hub's health sweep and CI's batteries under
+  `bot_hits` first. `/healthz` is dropped there too.
+- *outbound* — `lib/ad_client.py` and `lib/satellite_reporter.py` now send
+  `internal_ua(...)`. The ad fetch is one server-to-server call **per docs page
+  view**, and it was arriving at 2plot.dev as `python-requests/2.x`: every
+  reader of these docs was being counted as a crawler on the hub.
+
+### Changed — one app id, `email`
+
+`AD_APP_ID`, `SATELLITE_APP_KEY` and the bulletin's `app_id` all converge on
+the hub's short directory key. The ad rows were logged under `dash-email`; the
+hub folds legacy spellings at ingest, so history is not orphaned, but
+`/admin/ad-analytics` stops showing one host twice.
+
+### Added
+
+- **`tests/`, secretless** — 83 tests covering site identity, the social card
+  and installable-app surfaces, the internal-traffic contract in both
+  directions, the bulletin wiring, and both battery scripts run against the
+  in-process app. They pass with no `CROSS_APP_WEBHOOK_SECRET`, no
+  `GOOGLE_API_KEY` and no `RESEND_API_KEY`, because the degraded postures are
+  only provable when nothing is configured.
+- **`scripts/network_smoke.py`** — the network battery, one script with the
+  same named checks in CI and against production, including
+  `social_card_real_pixels`, which reads the CDN object's actual IHDR chunk.
+  The card's dimensions live in three places and only this check can see the
+  third.
+- **`scripts/smoke_live.py`** — post-deploy checks: canonicals, crawler bodies,
+  content negotiation, and every peer `llms.txt` in the directory. Checks about
+  *this* host are fatal; checks about a peer's host warn, because gating a
+  deploy on somebody else's certificate is shared fate.
+- **`scripts/make_social_card.py`** — renders the 1200×630 card.
+- **`lib/bulletin.py`** — the hub's announcement feed, wired as a function that
+  reports whether it wired rather than as four lines that can be commented out.
+- **`.github/workflows/cd.yml`** — deploy, wait for *sustained* health (5
+  consecutive 200s after a 120s settle, because Render swaps instances and the
+  old build answers `/healthz` throughout), then run both batteries against the
+  live site.
+- **`.flake8`**, an `actionlint` step, a zero-secret pytest job, and a job that
+  builds the real image, asserts version fingerprints inside it, boots it and
+  runs the battery against it.
+- **`ok: true` on `/healthz`** — the field the network battery reads.
+- **`require_owned_base_url()`** — refuses to boot in production against a
+  `*.onrender.com` canonical origin, which keeps resolving after a custom
+  domain is attached and quietly splits link equity across two hosts.
+- **`APP_BASE_URL`** is now read as well as `DASH_EMAIL_BASE_URL`, so this host
+  uses the same env name as the rest of the network.
+
+### Changed — from the previous cycle
 
 - **Migrated onto `dash-improve-my-llms` 2.3.3 and the 2plot network**
   (`handoff/existing_subdomains.md`). dash-email is the first repo through this

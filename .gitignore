@@ -79,9 +79,18 @@ Thumbs.db
 # App data
 assets/uploads/
 visitor_analytics.json
+# The flock lease lib/analytics_tracker.py takes around its read-modify-write.
+# Created on the first tracked hit, so it appears the moment anyone boots the
+# app locally; it holds no data and belongs to whichever process is running.
+visitor_analytics.json.lock
 # 2plot.ai traffic ledger (lib/traffic_reporter.py) — local hit log, never committed
 satellite_traffic.jsonl
 satellite_traffic.tmp
+# The rendered social card. Never served by this app and never committed: it
+# is uploaded by hand to cdn.2plot.ai/github_assets/<domain>.png, which is the
+# only copy og:image points at. `build/` is already ignored above; this note is
+# here so nobody "fixes" that by committing the PNG.
+build/social-cards/
 
 # Compatibility matrix scratch (venvs + raw smoke JSON)
 .compat/

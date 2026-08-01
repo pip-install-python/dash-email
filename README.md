@@ -1,6 +1,12 @@
 <div align="center">
 
-# Dash Email
+<!-- Absolute CDN URL, not a repo-relative path: this README is also the PyPI
+     long_description, where a relative image 404s. -->
+<a href="https://2plot.ai">
+  <img src="https://cdn.2plot.ai/github_assets/light_mode_2plot.png" alt="2plot.ai" width="320">
+</a>
+
+# dash-email — email components for Dash
 
 **Email components for [Plotly Dash](https://dash.plotly.com), wrapping [React Email](https://react.email) patterns.**
 
@@ -105,6 +111,10 @@ Run the full documentation site — component pages with isolated live examples,
 git clone https://github.com/pip-install-python/dash-email.git
 cd dash-email
 pip install -r requirements.txt
+# markdown2dash pins gunicorn<22, against the CVE-driven gunicorn>=23 floor in
+# requirements.txt. pip cannot resolve both, so it installs without its
+# dependency graph — every one of them is in requirements.txt already.
+pip install --no-deps markdown2dash==0.1.2
 python run.py    # http://127.0.0.1:8054
 ```
 
@@ -219,6 +229,7 @@ npm run extract-meta   # regenerate Python wrappers → dash_email/*.py
 
 # Python
 pip install -r requirements.txt
+pip install --no-deps markdown2dash==0.1.2   # pins gunicorn<22; see above
 pip install -e .
 python run.py          # docs + builder on :8054
 
@@ -279,7 +290,6 @@ dash-email is one of several tools built and maintained by **Pip Install Python 
 | 🧩 **[2plot.dev](https://2plot.dev)**                            | The full Dash component catalogue                 |
 | 🤖 **[ai-agent.buzz](https://ai-agent.buzz)**                    | Infinite AI canvas                                |
 | ⛵️ **[PiratesBargain](https://piratesbargain.com/shop)**         | E-commerce / digital commerce                     |
-| 📚 **[Pip Install Python](https://pip-install-python.com)**      | Open-source docs index for the Python & Dash ecosystem |
 
 ## License
 

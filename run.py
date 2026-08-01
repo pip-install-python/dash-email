@@ -26,9 +26,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from components.appshell import create_appshell  # noqa: E402
-from lib import network_directory  # noqa: E402
+from lib import bulletin, network_directory  # noqa: E402
 from lib.analytics_tracker import tracker  # noqa: E402
-from lib.constants import DOCS_BASE_URL, ORIGIN_PLACEHOLDER  # noqa: E402
+from lib.constants import (  # noqa: E402
+    DOCS_BASE_URL,
+    ORIGIN_PLACEHOLDER,
+    SITE_BRAND,
+    SITE_DESCRIPTION,
+    require_owned_base_url,
+)
 
 from dash_improve_my_llms import (  # noqa: E402
     add_llms_routes,
@@ -38,6 +44,12 @@ from dash_improve_my_llms import (  # noqa: E402
 )
 
 print(f"[dash-email] Starting Dash {dash.__version__}")
+
+# Refuses to boot in production if the canonical origin is a platform-generated
+# hostname. `*.onrender.com` keeps resolving after the custom domain is
+# attached, so a base URL pointing there splits link equity across two hosts
+# and nothing about the running site looks wrong.
+require_owned_base_url()
 
 app = Dash(
     __name__,
@@ -52,11 +64,16 @@ app = Dash(
     index_string=open('templates/index.html').read().replace(
         ORIGIN_PLACEHOLDER, DOCS_BASE_URL
     ),
-    # Dash interpolates `{%title%}` with `self.title` and never resolves the
-    # per-page title server-side. From 2.3.3 the package's prerender layer
-    # rewrites <title> per route for us, so this is now only the fallback for
-    # paths outside the page registry — where "Dash" would otherwise be served.
-    title="Dash Email — Email components for Plotly Dash",
+    # Dash interpolates the title placeholder with `self.title` and never
+    # resolves the per-page title server-side. From 2.3.3 the package's
+    # prerender layer rewrites <title> per route for us, so this is the
+    # fallback for paths outside the page registry — where "Dash" would
+    # otherwise be served.
+    #
+    # It is also `resolve_site_title`'s second candidate (2.3.4), which is why
+    # it carries SITE_BRAND verbatim rather than a prose sentence: one string,
+    # every surface. tests/test_site_identity.py pins it.
+    title=SITE_BRAND,
 )
 
 # The hand-rolled `interpolate_index` override that used to sit here — injecting
@@ -113,14 +130,20 @@ app._robots_config = RobotsConfig(
     disallowed_paths=[],
 )
 
+# `name` here is NOT a nav label — dash.register_page in pages/home.py owns
+# that, and it says "Home". This is what dash-improve-my-llms 2.3.4's
+# `resolve_site_title` reads first, so it is the /llms.txt H1 and the llms
+# viewer's brand chip: the two surfaces an agent uses to learn what this site
+# is. It published a bare "# Dash Email" until this pass — a name that matches
+# no package on PyPI and no repository on GitHub.
+#
+# `resolve_site_title` SKIPS generic candidates ("Home", "Index", "Dash"), so
+# passing the page's display name here would silently fall through to
+# `app.title` instead of erroring. Nothing would look broken.
 register_page_metadata(
     path="/",
-    name="Dash Email",
-    description=(
-        "A Plotly Dash component library wrapping React Email patterns: "
-        "15 email-safe components for building, previewing, and sending "
-        "HTML emails from Python."
-    ),
+    name=SITE_BRAND,
+    description=SITE_DESCRIPTION,
 )
 
 register_page_metadata(
@@ -181,6 +204,17 @@ def track_visitor():
 # bot-detection middleware.
 add_llms_routes(app, LLMSConfig(warn_missing_llms_doc=True))
 
+# The hub's announcement feed, rendered in the header of this site's llms.txt
+# viewer. Opt-in: with NETWORK_BULLETIN_URL unset it wires nothing and the
+# viewer still renders on the package's built-in tips. The boot line says which
+# of the two states this process is in — the boilerplate shipped this
+# commented out for weeks against a hub endpoint that was already serving, and
+# an announcement that never appears is not a symptom anyone notices.
+print(
+    f"[dash-email] network bulletin: "
+    f"{'wired -> ' + (bulletin.url() or '') if bulletin.configure() else 'off (NETWORK_BULLETIN_URL unset)'}"
+)
+
 # ============================================================================
 
 app.layout = create_appshell(dash.page_registry.values())
@@ -190,7 +224,18 @@ server = app.server
 
 @server.route("/healthz")
 def healthz():
-    return {"status": "ok", "dash": dash.__version__}
+    """Liveness probe: Render's health check, the hub's hourly sweep, CD's
+    sustained-health loop and scripts/network_smoke.py all read this.
+
+    `ok: true` is the network-standard field — the battery asserts on it, so a
+    host that answers 200 with a body of some other shape reads as unhealthy
+    across the whole fleet. `status` and `dash` are kept because Render's
+    dashboard and the existing runbooks show them.
+
+    Never counted as a visit: lib/analytics_tracker drops /healthz at write
+    time, because Render probes it far more often than anyone reads the docs.
+    """
+    return {"ok": True, "status": "ok", "dash": dash.__version__}
 
 
 # Hourly signed rollup POSTed to 2plot.ai so the hub's owner-only /traffic

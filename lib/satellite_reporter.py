@@ -70,17 +70,18 @@ def endpoint() -> str:
 def app_key() -> str:
     """This app's key in the hub's network directory.
 
-    Deliberately NOT chained to ``AD_APP_ID``: the ad network uses long
-    identifiers (e.g. "dash-documentation-boilerplate") that are not hub
-    directory keys — a deployment that set AD_APP_ID for ads would have
-    silently re-keyed its analytics series off the directory.
+    Deliberately NOT chained to ``AD_APP_ID``, even though on THIS app the two
+    now agree ("email" in both). A fork is free to use a long ad identifier
+    against a short directory key — leaflet.2plot.dev runs
+    ``AD_APP_ID=dash-leaflet2`` with directory key "leaflet" — and setting one
+    for ads must never silently re-key its analytics series off the directory.
+    The convergence here is a convenience, not a contract to lean on.
 
-    Default is "boilerplate" (this template's own directory key). The
-    "dev" key belongs to 2plot.dev (the pip-docs+ deployment) — apps
-    cloned from this template MUST set SATELLITE_APP_KEY to their own
-    directory key or their reports overwrite each other's rows.
+    Default is "email" (this app's own directory key). The "dev" key belongs
+    to 2plot.dev (the pip-docs+ deployment) — every satellite MUST report
+    under its own key or the reports overwrite each other's rows.
     """
-    return os.getenv("SATELLITE_APP_KEY") or "boilerplate"
+    return os.getenv("SATELLITE_APP_KEY") or "email"
 
 
 def _secret() -> str | None:
@@ -104,6 +105,8 @@ def post_rollup(payload: dict, secret: str | None = None, timeout: float = 10.0)
     if not secret:
         return False, "no CROSS_APP_WEBHOOK_SECRET"
 
+    from lib.constants import internal_ua
+
     # The signature covers the EXACT bytes sent — serialise once, sign that.
     body = json.dumps(payload).encode()
     ts = str(int(time.time()))
@@ -114,7 +117,13 @@ def post_rollup(payload: dict, secret: str | None = None, timeout: float = 10.0)
             endpoint(), data=body, timeout=timeout,
             headers={"Content-Type": "application/json",
                      "X-AI-Canvas-Timestamp": ts,
-                     "X-AI-Canvas-Signature": sig},
+                     "X-AI-Canvas-Signature": sig,
+                     # The internal-traffic contract's outbound half: without
+                     # this the hourly rollup arrives at 2plot.ai as
+                     # `python-requests/2.x` and the hub counts its own
+                     # analytics pipeline as a bot visit, once per satellite
+                     # per hour, forever.
+                     "User-Agent": internal_ua("traffic-reporter")},
         )
     except Exception as e:
         return False, f"request failed: {e!r}"

@@ -43,6 +43,14 @@ services:
       # DEFAULT_BASE_URL in lib/constants.py, so this entry is belt-and-braces
       # — set it explicitly here so a preview environment can override it
       # without editing code.
+      #
+      # APP_BASE_URL is the network-wide name (the boilerplate, leaflet and the
+      # hub all read it) and wins; DASH_EMAIL_BASE_URL is this repo's original
+      # name, kept because it has been set on this service since the first
+      # deploy and removing it from only one of the two places is how a host
+      # starts advertising the wrong canonical origin.
+      - key: APP_BASE_URL
+        value: https://email.2plot.dev
       - key: DASH_EMAIL_BASE_URL
         value: https://email.2plot.dev
       - key: WEB_WORKERS
@@ -54,10 +62,22 @@ services:
         sync: false
       - key: CROSS_APP_WEBHOOK_SECRET
         sync: false
-      # This app's 2plot network-directory key (2plotai lib/network_directory)
-      # — the hub health-sweeps it and labels its /traffic series from it.
+      # This app's 2plot network-directory key. ONE id on every hub surface:
+      # SATELLITE_APP_KEY labels the /traffic series, AD_APP_ID keys the ad
+      # server's impression and click rows, and lib/bulletin.py derives its
+      # `app_id` from the first of the two. The ad rows were logged under
+      # "dash-email" before this pass; the hub folds legacy spellings at
+      # ingest (`canonical_app_id`), so history is not orphaned, but every new
+      # row lands on "email" and /admin/ad-analytics stops showing one host
+      # twice.
       - key: SATELLITE_APP_KEY
         value: email
+      - key: AD_APP_ID
+        value: email
+      # The hub's announcement feed, rendered in this site's llms.txt viewer
+      # header. Opt-in — unset means the feature is simply off (lib/bulletin).
+      - key: NETWORK_BULLETIN_URL
+        value: https://2plot.dev/api/network/bulletin
       # Point the hit ledger at a mounted disk to survive deploys (without a
       # disk, a deploy loses the day-so-far ledger and the day's totals start
       # over). Uncomment together with a `disk:` block on this service:

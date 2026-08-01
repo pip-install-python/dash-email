@@ -6,11 +6,32 @@ dash>=4.1                     # COMPAT-MATRIX: dash
 # --- Documentation site ---
 dash-mantine-components>=2.7.0
 dash-iconify>=0.1.2
-markdown2dash>=0.1.2
 python-frontmatter>=1.0.0
 pydantic>=2.3.0
 python-dotenv>=1.0.0
-dash-improve-my-llms[flask]>=2.3.3
+
+# markdown2dash 0.1.2 declares `gunicorn>=21.2.0,<22.0.0` — a markdown parser
+# pinning a WSGI server, and directly against the CVE-driven gunicorn>=23 floor
+# below. pip cannot resolve both, so markdown2dash is NOT listed here; it is
+# installed on its own line, without its dependency graph:
+#
+#     pip install -r requirements.txt
+#     pip install --no-deps markdown2dash==0.1.2
+#
+# The Dockerfile and .github/workflows/ci.yml both do exactly that pair, and CI
+# asserts the resulting gunicorn version INSIDE the built image — which is what
+# keeps the dodge honest. markdown2dash's real runtime dependencies (dash,
+# dash-iconify, dash-mantine-components, pydantic) are all pinned above; the
+# only one that is not is mistune, listed here so nothing quietly relies on
+# --no-deps having installed it:
+mistune>=3.0.0
+# markdown2dash==0.1.2        <- installed --no-deps, see above
+
+# 2.3.4 is the network standard: below it `resolve_site_title` does not exist,
+# and this site's published identity (the /llms.txt H1, the llms viewer's brand
+# chip) silently degrades to `app.title`. tests/test_site_identity.py asserts
+# the installed version, and CI asserts it again inside the image.
+dash-improve-my-llms[flask]>=2.3.4
 requests>=2.27.1              # 2plot.dev ad-network client (lib/ad_client.py)
 
 # --- Email Builder app (/email-builder) ---
@@ -19,4 +40,9 @@ resend>=2.0.0
 pandas>=2.0.0
 
 # --- Production server ---
-gunicorn>=21.2.0
+# gunicorn fronts every Flask deployment in this network, so the floor is the
+# network's security baseline rather than a convenience: 21.x carried two HTTP
+# request-smuggling CVEs (CVE-2024-6827, CVE-2024-1135), both fixed in 23.0.
+# This app shipped 21.2.0 until the network pass, held there by markdown2dash's
+# transitive pin — see the note above.
+gunicorn>=23.0.0

@@ -69,6 +69,11 @@ jobs:
           python -m pip install --upgrade pip
           grep -v 'COMPAT-MATRIX: dash' requirements.txt > /tmp/reqs.txt
           python -m pip install dash -r /tmp/reqs.txt
+          # markdown2dash pins gunicorn<22 against the CVE-driven gunicorn>=23
+          # floor, so it is not in requirements.txt and installs without its
+          # dependency graph. Same pair as the Dockerfile, ci.yml and
+          # scripts/compat_matrix.py.
+          python -m pip install --no-deps markdown2dash==0.1.2
           python scripts/smoke_test.py
 
       - name: Build

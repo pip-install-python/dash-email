@@ -4,12 +4,22 @@
     <!-- CHARSET MUST BE FIRST.
          The HTML spec requires the encoding declaration to appear entirely
          within the first 1024 bytes of the document. Dash emits its own
-         `<meta charset="UTF-8">` inside {%metas%}, but it comes *after* the
-         per-page description/og/twitter tags that register_page() prepends —
-         which on this site already reaches byte 1008 on /components/email-structure.
-         One longer page description and it goes non-conforming.
-         Declaring it here pins it near byte 60 whatever Dash adds later. The
-         duplicate is deliberate and harmless: the first declaration wins. -->
+         charset meta in the placeholder block below, but that block comes
+         *after* the per-page description/og/twitter tags register_page()
+         prepends — which on this site already reaches byte 1008 on
+         /components/email-structure. One longer page description and it goes
+         non-conforming. Declaring it here pins it near byte 60 whatever Dash
+         adds later; the duplicate is deliberate and harmless, the first
+         declaration wins.
+
+         NEVER NAME A DASH PLACEHOLDER INSIDE A COMMENT. Dash substitutes them
+         by plain string replacement over the whole template, comments
+         included. This comment used to spell the metas placeholder out, so
+         every response carried the ENTIRE per-page meta block twice — once
+         here, inert inside the comment, and once where it belongs. Live and
+         invisible in a browser; a scraper reading the raw HTML sees two
+         og:image tags and picks one. That is the "two empty og:image tags"
+         this host was measured with on 2026-08-01. -->
     <meta charset="utf-8">
 
     <!-- Dash emits, per page, from register_page(): description, og:title,
@@ -19,14 +29,87 @@
          duplicates arbitrarily. -->
     {%metas%}
     <title>{%title%}</title>
+    <!-- The favicon placeholder below emits exactly ONE tag: a cache-busted
+         <link rel="icon"> for the favicon.ico it finds anywhere under assets/
+         (Dash walks the tree, so assets/favicon/favicon.ico is picked up).
+         Do not add a second hand-written .ico link -- that is a duplicate.
+         Everything Dash does NOT emit is listed after it: the PNG size
+         variants, the iOS touch icon and the manifest.
+
+         Do not write the placeholder's name into a comment either; Dash
+         string-substitutes it wherever it appears, comments included. -->
     {%favicon%}
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon/favicon-16x16.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="96x96" href="/assets/favicon/favicon-96x96.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/assets/favicon/android-chrome-192x192.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/favicon/apple-touch-icon.png">
+    <link rel="manifest" href="/assets/favicon/site.webmanifest">
+
+    <!-- Two theme-colors, not one: the appshell follows
+         prefers-color-scheme (components/appshell.py), so a single value would
+         paint the mobile browser chrome wrong for half of visitors. These are
+         the Mantine body backgrounds for each scheme. -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1a1b1e">
+
     {%css%}
 
-    <!-- Site-level tags Dash does NOT emit -->
+    <!-- ========================================================================
+         SITE-LEVEL TAGS DASH DOES NOT EMIT
+         ========================================================================
+         ONE RULE, and it is the whole reason this block is short: declare only
+         what Dash does NOT emit itself.
+
+         `dash.register_page()` makes Dash generate `description`, `og:type`,
+         `og:title`, `og:description`, `og:image` and the full `twitter:*` set
+         on EVERY request, per page (see `_page_meta_tags` in dash/_pages.py).
+         Declaring them here as well produces two of each — and the static copy
+         describes the SITE while Dash's describes the PAGE, so the duplicate is
+         both redundant and less accurate. Which one a scraper honours is not
+         defined; in practice the later tag wins.
+
+         tests/test_social_card.py asserts the counts in both directions. -->
     <meta name="keywords" content="dash, plotly, email, react-email, email templates, python, components, newsletter, transactional email">
     <meta name="author" content="Pip Install Python LLC">
-    <meta property="og:site_name" content="Dash Email">
+    <meta property="og:site_name" content="dash-email — email components for Dash">
     <meta property="og:locale" content="en_US">
+
+    <!-- OG URL. Genuinely absent from Dash's per-page set, so it belongs here.
+         The origin is substituted from lib/constants.py at startup; the
+         client-side script below re-points it on SPA navigation. -->
+    <meta property="og:url" content="__CANONICAL_ORIGIN__/">
+
+    <!-- THE SOCIAL CARD — and note that the image URL itself is NOT here.
+         Deliberately.
+
+         Dash emits `og:image` and `twitter:image` for every page from
+         `register_page(image_url=...)`, which `lib/constants.OG_IMAGE_URL` now
+         supplies (pages/home.py, pages/email_builder.py, pages/markdown.py).
+         A static copy here would make TWO of each and let the scraper choose.
+         Before this pass no page passed `image_url` at all, so Dash shipped
+         `og:image=""` on every one of them — an EMPTY tag, which unfurls worse
+         than a missing one because scrapers treat the empty value as the
+         declared image and render a blank card.
+
+         What stays are the auxiliaries Dash never emits. Keep them in step
+         with lib/constants.OG_IMAGE_* — a width/height that disagrees with the
+         real file is worse than declaring none, because the platform reserves
+         that box and crops into it. scripts/smoke_live.py reads the IHDR chunk
+         of the actual CDN object after every deploy and compares.
+
+         secure_url is the https duplicate Facebook still reads; type saves the
+         scraper a HEAD request to learn the format. -->
+    <meta property="og:image:secure_url" content="https://cdn.2plot.ai/github_assets/email.2plot.dev.png">
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="dash-email — email components for Dash">
+
+    <!-- Same rule as above: Dash emits twitter:card, twitter:url,
+         twitter:title, twitter:description and twitter:image per page. Only
+         the alt text is left, because Dash omits it. -->
+    <meta name="twitter:image:alt" content="dash-email — email components for Dash">
 
     <!-- Keeps canonical / og:url / twitter:url correct across CLIENT-SIDE
          navigation only. dash-improve-my-llms 2.3.3 emits all three
@@ -99,8 +182,8 @@
         "@graph": [
             {
                 "@type": "SoftwareSourceCode",
-                "name": "dash-email",
-                "description": "A Plotly Dash component library wrapping React Email patterns: 15 email-safe components for building, previewing, and sending HTML emails from Python.",
+                "name": "dash-email — email components for Dash",
+                "description": "dash-email — 15 email-safe Plotly Dash components wrapping React Email patterns. Build, preview and send HTML emails from Python. By Pip Install Python.",
                 "url": "__CANONICAL_ORIGIN__",
                 "codeRepository": "https://github.com/pip-install-python/dash-email",
                 "programmingLanguage": ["Python", "JavaScript"],
@@ -114,7 +197,7 @@
             },
             {
                 "@type": "WebSite",
-                "name": "Dash Email",
+                "name": "dash-email — email components for Dash",
                 "url": "__CANONICAL_ORIGIN__",
                 "publisher": {
                     "@type": "Organization",
@@ -130,14 +213,6 @@
     <meta name="llms-txt" content="__CANONICAL_ORIGIN__/llms.txt">
     <meta name="llms-sitemap" content="__CANONICAL_ORIGIN__/sitemap.xml">
 
-    <!-- NO og:image yet, deliberately.
-         Dash emits `og:image` and `twitter:image` from register_page(), both
-         currently empty because no brand image exists. An empty tag beats a
-         404 — a broken image URL is worse than none for every link preview.
-         To fix properly: add assets/og-image.png at 1200x630, then pass
-         `image="og-image.png"` to dash.register_page(...) in pages/markdown.py
-         so each page advertises it. Do not hard-code one here; it would
-         duplicate the tag Dash already emits. -->
 </head>
 <body>
     {%app_entry%}
@@ -148,11 +223,12 @@
     </footer>
     <noscript>
         <div style="max-width: 640px; margin: 40px auto; font-family: sans-serif;">
-            <h1>Dash Email</h1>
+            <h1>dash-email — email components for Dash</h1>
             <p>
-                A Plotly Dash component library wrapping React Email patterns —
-                15 email-safe components for building, previewing, and sending
-                HTML emails from Python. MIT licensed, Python 3.9+, Dash 4.1+.
+                15 email-safe Plotly Dash components wrapping React Email
+                patterns, for building, previewing and sending HTML emails from
+                Python. MIT licensed, Python 3.9+, Dash 4.1+.
+                By Pip Install Python.
             </p>
             <!-- Deliberately does not lead with "requires JavaScript".
                  dash-improve-my-llms 2.3.3 prerenders real prose for

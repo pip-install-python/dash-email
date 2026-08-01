@@ -1,17 +1,45 @@
-"""
-Home page - Landing page for Dash Email
+"""Landing page for dash-email — email components for Dash.
+
+Also the source of the site's `/llms.txt` body: `LLMS_DOC` below is discovered
+by dash-improve-my-llms as a module attribute, so nothing in this repo imports
+it and it is nonetheless live on every agent-facing surface.
 """
 import dash
 from dash import html
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
 
-from lib.constants import PAGE_TITLE_PREFIX
+from lib.constants import (
+    OG_IMAGE_URL,
+    PAGE_TITLE_PREFIX,
+    SITE_BRAND,
+    SITE_DESCRIPTION,
+)
 
-dash.register_page(__name__, path="/", name="Home", title=PAGE_TITLE_PREFIX + "Home")
+# `description=` and `image_url=` are not optional decoration. Dash builds
+# `description`, `og:description`, `og:image` and `twitter:image` for EVERY
+# page from this call and emits `content=""` for whatever it was not given
+# (dash/_pages.py) — and an empty tag is worse than an absent one, because a
+# scraper treats the empty value as the declared image and renders a blank
+# card. This page shipped both empty until the network pass.
+#
+# `image_url` is absolute and overrides Dash's assets-folder inference, which
+# is the other half of the fix: the inference reaches `logo.<ext>` and would
+# happily publish an SVG that no social platform renders.
+dash.register_page(
+    __name__,
+    path="/",
+    name="Home",
+    title=PAGE_TITLE_PREFIX + "Home",
+    description=SITE_DESCRIPTION,
+    image_url=OG_IMAGE_URL,
+)
 
-# Served verbatim at /llms.txt by dash-improve-my-llms.
-LLMS_DOC = """# Dash Email
+# Served verbatim at /llms.txt by dash-improve-my-llms. The H1 is the single
+# most-read line of this site and the one nobody looks at — it is what an agent
+# fetching /llms.txt cold reads as the name of this site, so it carries
+# SITE_BRAND rather than a display name. tests/test_site_identity.py pins it.
+LLMS_DOC = f"""# {SITE_BRAND}
 
 A Plotly Dash component library wrapping React Email patterns. 15 email-safe
 components (Email, EmailBody, EmailContainer, EmailSection, EmailRow,
