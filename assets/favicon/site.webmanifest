@@ -1,0 +1,13 @@
+{
+  "name": "dash-email — email components for Dash",
+  "short_name": "dash-email",
+  "description": "15 email-safe Plotly Dash components wrapping React Email patterns: build, preview and send HTML emails from Python.",
+  "icons": [
+    { "src": "/assets/favicon/android-chrome-192x192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/assets/favicon/android-chrome-512x512.png", "sizes": "512x512", "type": "image/png" }
+  ],
+  "theme_color": "#1a1b1e",
+  "background_color": "#1a1b1e",
+  "display": "standalone",
+  "start_url": "/"
+}

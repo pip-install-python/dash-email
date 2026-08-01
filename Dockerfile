@@ -13,6 +13,12 @@ RUN pip install --no-cache-dir --upgrade pip
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+# markdown2dash pins gunicorn<22, conflicting with the CVE-driven gunicorn>=23
+# in requirements.txt (CVE-2024-6827, CVE-2024-1135 — request smuggling). Its
+# real dependencies are all in requirements.txt already, so it is installed
+# alone, without letting pip see the spurious pin. CI asserts the resulting
+# gunicorn version inside this image, which is what keeps the dodge honest.
+RUN pip install --no-cache-dir --no-deps markdown2dash==0.1.2
 
 COPY . .
 RUN pip install --no-cache-dir -e .

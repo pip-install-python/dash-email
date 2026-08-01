@@ -2,7 +2,6 @@
 Image Handler for temporary storage of uploaded images.
 Saves base64 images to disk and provides cleanup functionality.
 """
-import os
 import uuid
 import base64
 import time

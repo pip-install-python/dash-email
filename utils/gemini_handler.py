@@ -2,11 +2,9 @@
 Gemini AI Handler for email generation.
 Uses Google's Gemini API to generate email content and dash_email code.
 """
-import os
 import time
 from dotenv import load_dotenv
 from google import genai
-from google.genai import types
 
 from utils.ai_config import get_api_key, is_ai_enabled  # noqa: F401  (re-exported)
 from utils.wide_event_logger import get_email_logger
@@ -35,6 +33,7 @@ def get_client():
             )
         _client = genai.Client(api_key=api_key)
     return _client
+
 
 # Email type descriptions for better prompts
 EMAIL_TYPE_DESCRIPTIONS = {

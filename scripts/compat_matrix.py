@@ -212,6 +212,18 @@ def make_venv(version: str) -> tuple[Path, Path] | None:
         log(f"{version}: requirements install FAILED\n{r.stderr[-1500:]}")
         return None
 
+    # markdown2dash declares `gunicorn>=21.2.0,<22.0.0`, against the CVE-driven
+    # `gunicorn>=23` floor in requirements.txt — pip cannot resolve both, so it
+    # is not listed there and goes in here without its dependency graph. Same
+    # pair as the Dockerfile, CI and release.yml. Its real dependencies are all
+    # in requirements.txt already.
+    log(f"{version}: installing markdown2dash (--no-deps)")
+    r = run([str(py), "-m", "pip", "install", "-q", "--no-deps",
+             "markdown2dash==0.1.2"], cwd=PROJECT_ROOT)
+    if r.returncode:
+        log(f"{version}: markdown2dash install FAILED\n{r.stderr[-1500:]}")
+        return None
+
     # Confirm the resolver did not quietly upgrade Dash to satisfy something.
     r = run([str(py), "-c", "import dash; print(dash.__version__)"])
     actual = r.stdout.strip()
@@ -276,7 +288,9 @@ def browser_leg(py: Path, version: str, backend: str, port: int) -> dict:
         else:
             return {"error": "server never came up"}
 
-        from playwright.sync_api import sync_playwright
+        # Imported for real this time; the guard at the top of the function
+        # only probed for its presence.
+        from playwright.sync_api import sync_playwright  # noqa: F811
 
         pages_json = json.loads(
             subprocess.run(

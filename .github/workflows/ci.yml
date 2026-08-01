@@ -1,17 +1,43 @@
 name: CI
 
-# Every push and PR runs the smoke suite against the full supported Dash range.
-# setup.py declares `dash>=4.1`; this is what keeps that claim honest, and it
-# is the same harness scripts/compat_matrix.py runs locally.
+# Two things at once, because this repo is two things: a published component
+# library AND the docs site at email.2plot.dev.
+#
+#   library   the smoke matrix across the supported Dash range, the wheel
+#             build, and the Python range setup.py claims;
+#   satellite the 2plot network baseline — a secretless pytest run, the real
+#             Docker image booted and probed by the same battery that runs
+#             against production, and version fingerprints asserted INSIDE the
+#             artifact (pip metadata is invisible from outside a running host).
+#
+# Deliberately NOT `push: branches: [main]`. cd.yml runs on that push and its
+# first job `uses:` this workflow, so a push to main would start two runs of it
+# — which then contend for the `ci-${{ github.ref }}` concurrency group below
+# and cancel each other. The work still gets done, but every push leaves a
+# `cancelled` CI run next to the green CD one, which reads as a failure at a
+# glance. So: pull requests get their own CI, and `main` is owned by CD. There
+# is no coverage gap — CD cannot deploy without this workflow passing first.
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
+  # Called by cd.yml so a deploy can never ship something the matrix rejected.
+  workflow_call:
+
+# Read-only. Nothing here publishes, comments or tags; the deploy lives in
+# cd.yml behind a `production` environment and the PyPI release in release.yml.
+permissions:
+  contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  # Never let a CI run inherit production behaviour: `require_owned_base_url()`
+  # keys off RENDER / APP_ENV, and the satellite reporter keys off the webhook
+  # secret. Both must stay inert here.
+  APP_ENV: ci
 
 # TWO different Python floors, and conflating them is the easy mistake:
 #
@@ -26,9 +52,182 @@ concurrency:
 # So the smoke job never runs below 3.10, and the package jobs never install
 # the docs requirements.
 jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install flake8
+      - name: flake8
+        run: flake8 lib components pages tests scripts utils run.py
+
+      # The workflows lint themselves. This is not belt-and-braces: an invalid
+      # workflow file is the one defect CI structurally cannot report, because
+      # the run dies before a job exists to fail. A double-quoted string inside
+      # a ${{ }} expression is a LEX error that invalidates the whole file —
+      # it silently killed every CI and CD run on boilerplate.2plot.dev for
+      # four days, with nothing to click and nothing in the API but
+      # `conclusion: failure` and zero jobs. actionlint catches it in a second.
+      - name: actionlint
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
+          ./actionlint -color
+
+  docs-tests:
+    name: Docs site · pytest (zero secrets)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install the docs site
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # markdown2dash pins gunicorn<22 against the CVE-driven gunicorn>=23
+          # floor. Same two-command install as the Dockerfile, release.yml and
+          # scripts/compat_matrix.py.
+          pip install --no-deps markdown2dash==0.1.2
+          pip install -e .
+          pip install pytest
+
+      - name: Confirm the pinned dependency versions
+        run: |
+          python - <<'PY'
+          import dash, dash_improve_my_llms as pkg, gunicorn
+
+          def parts(v):
+              return tuple(int(x) for x in v.split(".")[:3] if x.isdigit())
+
+          assert parts(dash.__version__)[:2] >= (4, 1), dash.__version__
+          # 2.3.4 is the network standard: below it `resolve_site_title` does
+          # not exist and this site's published identity degrades to app.title.
+          assert parts(pkg.__version__) >= (2, 3, 4), pkg.__version__
+          # 21.x carried two request-smuggling CVEs (CVE-2024-6827,
+          # CVE-2024-1135). markdown2dash's spurious <22 pin must not win.
+          assert parts(gunicorn.__version__)[:2] >= (23, 0), gunicorn.__version__
+          print(f"dash {dash.__version__}, dash-improve-my-llms "
+                f"{pkg.__version__}, gunicorn {gunicorn.__version__}")
+          PY
+
+      # No CROSS_APP_WEBHOOK_SECRET, no GOOGLE_API_KEY, no RESEND_API_KEY here
+      # ON PURPOSE. tests/conftest.py pins them empty, and the app's degraded
+      # postures (showcase mode, a dormant reporter) are only provable when
+      # nothing is configured.
+      - name: Test suite (zero secrets)
+        run: pytest tests -q
+
+      - name: Boot under a production server
+        run: |
+          gunicorn run:server -b 127.0.0.1:8054 --daemon --access-logfile - --error-logfile -
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8054/healthz && break
+            sleep 1
+          done
+          # A page that renders under the test client can still fail under a
+          # real WSGI worker — different import path, different working
+          # directory, no test-client conveniences.
+          curl -sf http://127.0.0.1:8054/ > /dev/null
+          curl -sf http://127.0.0.1:8054/components/email-structure > /dev/null
+          # The battery, against the same server this satellite deploys.
+          python3 scripts/network_smoke.py --base-url http://127.0.0.1:8054
+
+  docker:
+    name: docker image · boot · battery
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [docs-tests]
+    steps:
+      - uses: actions/checkout@v4
+
+      # The same build Render runs. This is where a dependency-resolution
+      # failure surfaces — at CI time, not deploy time, where the only signal
+      # is a dashboard log while the old image keeps serving.
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the production image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          tags: dash-email-docs:ci
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # pip metadata is invisible from outside a running host, so the versions
+      # are asserted here, inside the artifact that actually ships.
+      - name: Version fingerprints inside the image
+        run: |
+          docker run --rm dash-email-docs:ci python -c "
+          from importlib.metadata import version
+
+          def parts(v):
+              return tuple(int(x) for x in v.split('.')[:3] if x.isdigit())
+
+          v = version('dash')
+          print('dash', v)
+          assert parts(v)[:2] >= (4, 1), f'expected dash >=4.1, image has {v}'
+
+          v = version('dash-improve-my-llms')
+          print('dash-improve-my-llms', v)
+          assert parts(v) >= (2, 3, 4), f'expected >=2.3.4 (resolve_site_title), image has {v}'
+
+          # markdown2dash installs with --no-deps to dodge its gunicorn<22
+          # pin; this assert is what proves the dodge kept working. 21.x
+          # carried two request-smuggling CVEs (CVE-2024-6827, CVE-2024-1135).
+          v = version('gunicorn')
+          print('gunicorn', v)
+          assert parts(v)[:2] >= (23, 0), f'expected gunicorn>=23, image has {v}'
+
+          # ...and that skipping its dependency graph did not skip the package.
+          import markdown2dash  # noqa: F401
+          print('markdown2dash importable')
+          "
+
+      # Boot with no secrets: the email builder falls back to showcase mode,
+      # the traffic reporter stays dormant. What this catches is any
+      # import-time or preload crash — the class of failure where the platform
+      # loops the worker and the deploy never goes live.
+      - name: Boot the container and wait for /healthz
+        run: |
+          docker run -d --name docs -p 8054:8054 dash-email-docs:ci
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8054/healthz > /dev/null; then
+              echo "healthy after ~$((i*2))s"
+              exit 0
+            fi
+            if [ "$(docker inspect -f '{{.State.Running}}' docs)" != "true" ]; then
+              echo "container exited during boot:"
+              docker logs docs
+              exit 1
+            fi
+            sleep 2
+          done
+          echo "never became healthy; last logs:"
+          docker logs --tail 100 docs
+          exit 1
+
+      # The SAME script CD runs against https://email.2plot.dev, so a failure
+      # in CI and a failure in production read identically.
+      - name: Smoke battery against the booted container
+        run: python3 scripts/network_smoke.py --base-url http://127.0.0.1:8054
+
+      - name: Container logs (for the record)
+        if: always()
+        run: docker logs --tail 40 docs 2>/dev/null || true
+
   smoke:
     name: Docs · Dash ${{ matrix.dash }} · Python ${{ matrix.python }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -70,6 +269,10 @@ jobs:
         run: |
           grep -v 'COMPAT-MATRIX: dash' requirements.txt > /tmp/reqs.txt
           python -m pip install -r /tmp/reqs.txt
+          # markdown2dash pins gunicorn<22 against the CVE-driven gunicorn>=23
+          # floor, so it is not in requirements.txt and installs without its
+          # dependency graph. Same pair as the Dockerfile and release.yml.
+          python -m pip install --no-deps markdown2dash==0.1.2
 
       - name: Report the resolved Dash version
         # A silent upgrade here would make the whole matrix meaningless.
@@ -252,3 +455,19 @@ jobs:
         run: |
           for f in assets/*.js; do node --check "$f"; done
           cat assets/*.js | node --check -
+
+  pip-audit:
+    name: pip-audit (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Advisory on purpose. A CVE in a transitive dependency of a docs site is
+    # worth knowing about the day it lands, and worth nobody's broken build at
+    # 2am. The report is the value; flip this off once the baseline is quiet.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pip-audit
+      - run: pip-audit -r requirements.txt --skip-editable

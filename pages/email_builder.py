@@ -9,11 +9,29 @@ from dash import html, dcc, callback, Input, Output, State, no_update, clientsid
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
 import dash_email as de
+from lib.constants import OG_IMAGE_URL, PAGE_TITLE_PREFIX
 from utils.ai_config import is_ai_enabled
 from utils.image_handler import save_multiple_images, cleanup_old_uploads
 from utils.showcase_templates import SHOWCASE_TYPES
 
-dash.register_page(__name__, path="/email-builder", name="Email Builder")
+# `description=`, `title=` and `image_url=` are load-bearing, not decoration:
+# Dash emits `description`, `og:description`, `og:image` and `twitter:image`
+# for every page from this call and fills in `content=""` for anything it was
+# not given (dash/_pages.py). An empty og:image renders a blank share card,
+# which is worse than no tag at all — and `title` is what becomes `og:title`,
+# so without the prefix this page's unfurl named no site.
+dash.register_page(
+    __name__,
+    path="/email-builder",
+    name="Email Builder",
+    title=PAGE_TITLE_PREFIX + "Email Builder",
+    description=(
+        "AI-powered email template builder: generate dash-email layouts with "
+        "Google Gemini, preview them live, export Python code, and send via "
+        "Resend."
+    ),
+    image_url=OG_IMAGE_URL,
+)
 
 # Without a Gemini key the builder still works, serving curated example
 # templates instead of generating them. Resolved once at import: the key comes
@@ -686,7 +704,6 @@ def update_selected_type(marketing, transactional, professional, other):
             return other_val
 
     # Return the actual triggered value
-    triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
     triggered_value = ctx.triggered[0]["value"]
     return triggered_value if triggered_value else no_update
 
@@ -901,7 +918,7 @@ def create_preview_from_code(preview_code: str):
         print(f"Syntax error in preview code: {e}")
         print(f"Code snippet: {code[:200] if code else 'empty'}...")
         return dmc.Alert(
-            f"Could not render preview due to syntax error. The email was still generated - check the Code tab.",
+            "Could not render preview due to syntax error. The email was still generated - check the Code tab.",
             title="Preview Error",
             color="orange",
         )
