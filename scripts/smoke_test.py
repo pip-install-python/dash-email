@@ -429,8 +429,22 @@ def _check_seo(res: Results, run_mod, dash_mod) -> None:
 
         # 1. A real, page-specific title. 2.3.3 sets it from the page NAME,
         #    not the registry `title`, so assert non-generic rather than equal.
+        #
+        #    The HOME PAGE is exempt from the "not app.title" half, and that is
+        #    the network standard rather than a loosened check. `run.py` calls
+        #    `register_page_metadata(path="/", name=SITE_BRAND)` — the one
+        #    registration that makes the /llms.txt H1 and the llms viewer's
+        #    brand chip say what this site is — and 2.3.4 prerenders the title
+        #    from the same name. So `/` legitimately serves the brand, which
+        #    `Dash(title=)` also carries. Requiring them to differ would force
+        #    the site to publish two names for itself, which is the exact drift
+        #    tests/test_site_identity.py exists to prevent.
+        #
+        #    Every other route stays strict: a page that falls back to the
+        #    app-wide title is the real failure, and it is still caught.
         title = head.title.strip()
-        if not title or title in ("Dash", run_mod.app.title):
+        generic = ("Dash",) if path == "/" else ("Dash", run_mod.app.title)
+        if not title or title in generic:
             bad_title.append(f"{path} → {title!r}")
 
         # 2. Exactly one canonical, pointing at this page on the real origin.
