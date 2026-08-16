@@ -27,11 +27,15 @@ python-dotenv>=1.0.0
 mistune>=3.0.0
 # markdown2dash==0.1.2        <- installed --no-deps, see above
 
-# 2.3.4 is the network standard: below it `resolve_site_title` does not exist,
-# and this site's published identity (the /llms.txt H1, the llms viewer's brand
-# chip) silently degrades to `app.title`. tests/test_site_identity.py asserts
-# the installed version, and CI asserts it again inside the image.
-dash-improve-my-llms[flask]>=2.3.4
+# 2.5.1 is the network floor for the x402 instrumentation pass: it serves the
+# tiered corpus documents (/llms-small.txt, /llms-full.txt) that
+# lib/traffic_rollup.py's v3 machine-surface rows measure, and carries the
+# Tier-B SEO standard (per-page title/image_url/schema_type reaching the
+# crawler document). Below 2.3.4 `resolve_site_title` does not exist and this
+# site's published identity (the /llms.txt H1, the llms viewer's brand chip)
+# silently degrades to `app.title` — tests/test_site_identity.py asserts the
+# installed version, and CI asserts it again inside the image.
+dash-improve-my-llms[flask]>=2.5.1
 requests>=2.27.1              # 2plot.dev ad-network client (lib/ad_client.py)
 
 # --- Email Builder app (/email-builder) ---

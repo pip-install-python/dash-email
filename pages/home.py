@@ -15,6 +15,7 @@ from lib.constants import (
     SITE_BRAND,
     SITE_DESCRIPTION,
 )
+from lib.versions import substitute_versions
 
 # `description=` and `image_url=` are not optional decoration. Dash builds
 # `description`, `og:description`, `og:image` and `twitter:image` for EVERY
@@ -53,6 +54,13 @@ and sending HTML emails from Python.
   preview, Python code export, and sending via Resend.
 - Source: https://github.com/pip-install-python/dash-email
 """
+
+# Same {{VERSION:<distribution>}} substitution pages/markdown.py applies to
+# the docs. The prose above carries no version claim today; running it through
+# the substitution anyway means the first claim someone writes here is derived
+# from the installed package rather than hardcoded — a hardcoded number is a
+# lie waiting for the next release. See lib/versions.py.
+LLMS_DOC = substitute_versions(LLMS_DOC, source="pages/home.py")
 
 # Feature cards data
 features = [

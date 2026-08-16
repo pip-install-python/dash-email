@@ -111,7 +111,7 @@ network_directory.apply(DOCS_BASE_URL)
 # The hand-written `custom_rules` block that used to live here is gone. It
 # existed to counter a dash-improve-my-llms 2.0.0 bug that emitted
 # `OAI-SearchBot: Disallow: /` from inside the *allow* branch; that was fixed
-# upstream in 2.3.2, and requirements.txt now floors at 2.3.3. Keeping the
+# upstream in 2.3.2, and requirements.txt now floors at 2.5.1. Keeping the
 # workaround on top of a fixed package would emit two groups for the same
 # user-agent and leave the outcome to each crawler's merge semantics.
 #
@@ -199,6 +199,20 @@ def track_visitor():
     except Exception:  # noqa: BLE001 — analytics must never break a page view
         pass
 
+
+# Tiered corpus documents (dash-improve-my-llms >= 2.4.0). Pseudo-paths:
+# they never enter dash.page_registry, so they cannot leak into listings —
+# registering them here lets this satellite tier its compact briefing and
+# full corpus via env (LLMS_SMALL_TIER / LLMS_FULL_TIER; unset = the
+# default tier, i.e. public), and the hub can tighten either network-wide
+# through its page-tier ceilings with no redeploy here. This fork carries
+# no access-control layer, so the registrations are measurement + knob
+# surface only; nothing gates on them locally. Inert on older package
+# versions.
+from lib import page_tiers as _page_tiers  # noqa: E402
+
+_page_tiers.register("/llms-small.txt", os.environ.get("LLMS_SMALL_TIER"))
+_page_tiers.register("/llms-full.txt", os.environ.get("LLMS_FULL_TIER"))
 
 # Wires /llms.txt, /<page>/llms.txt, /robots.txt, /sitemap.xml and
 # bot-detection middleware.
