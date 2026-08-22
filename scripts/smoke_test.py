@@ -395,7 +395,15 @@ def _check_seo(res: Results, run_mod, dash_mod) -> None:
     from lib.constants import DOCS_BASE_URL
 
     origin = DOCS_BASE_URL.rstrip("/")
-    pages = list(dash_mod.page_registry.values())
+    # /admin/* is excluded from every crawl-surface sweep here on purpose: the
+    # control board fails CLOSED to anonymous renders (its machine surfaces
+    # are mark_hidden, it is deliberately absent from the sitemap, and its
+    # crawler body carries no title/canonical/charset to check). Sweeping it
+    # like a docs route flags exactly the behavior the gate exists for —
+    # tests/test_control_board.py owns that page's assertions. Same exclusion
+    # as tests/conftest.py's `pages` fixture.
+    pages = [entry for entry in dash_mod.page_registry.values()
+             if not entry["path"].startswith("/admin/")]
 
     # A UA the package's bot detector recognises. The prerendered document is
     # what search engines and unfurlers actually index.
@@ -552,10 +560,13 @@ def _check_seo(res: Results, run_mod, dash_mod) -> None:
             "## Network present" if "## Network" in llms
             else "network_directory.apply() not wired?")
 
-    # Peers that are known not to resolve. Re-copying the boilerplate's
-    # lib/network_directory.py verbatim reintroduces both, and a dead entry is
-    # one an agent follows once before distrusting the whole list.
-    DEAD_PEERS = ["pannellum.2plot.dev", "emojimart.2plot.dev"]
+    # Peers that are known not to resolve — a dead entry is one an agent
+    # follows once before distrusting the whole list. pannellum.2plot.dev and
+    # emojimart.2plot.dev lived here while they were NXDOMAIN (measured
+    # 2026-07-31); both shipped live in the gate wave's batch 1 (2026-08-21/22)
+    # and the canonical directory rightly lists them again. The check stays
+    # armed so the next retirement has somewhere to land.
+    DEAD_PEERS = []
     listed_dead = [d for d in DEAD_PEERS if d in llms]
     res.add("seo", "no known-dead peer advertised", not listed_dead,
             "directory clean" if not listed_dead
