@@ -1,21 +1,50 @@
 import dash_mantine_components as dmc
-from dash import Output, Input, clientside_callback
+from dash import Output, Input, State, clientside_callback
 from dash_iconify import DashIconify
 
-from lib.constants import GITHUB_URL
+from lib.constants import GITHUB_URL, HEADER_HEIGHT
 
 
-def create_link(icon, href):
-    """Create an external link icon button"""
+def create_clerk_avatar():
+    """Clerk avatar / sign-in control, sat beside the colour-scheme toggle.
+
+    Returns None when Clerk is not configured, so local development and any
+    deploy without the keys renders the header exactly as before rather than
+    erroring on a missing component. `lib/auth.py` registers Clerk with
+    `headless=True`, meaning the package injects NO UI of its own — without
+    this widget there is no way to sign in even though Clerk initialises.
+    The package renders `#clerk-login-button` inside it; since
+    dash-clerk-auth 0.9.2 that button's own handler is satellite-safe, so it
+    needs nothing from us.
+    """
+    from lib.auth import clerk_enabled
+
+    if not clerk_enabled():
+        return None
+    from dash_clerk_auth import create_clerk_menu
+
+    return create_clerk_menu(show_dropdown=True, dropdown_align="right")
+
+
+def create_link(icon, href, label):
+    """Create an external link icon button.
+
+    ``label`` is REQUIRED: an icon-only link has no accessible name, so
+    screen readers announce it as "link" and AI agents can't tell what it
+    does — the exact Lighthouse/Agentic-Browsing failure measured on the
+    fleet 2026-08-21. The label lands on both the anchor and the button.
+    """
     return dmc.Anchor(
         dmc.ActionIcon(
             DashIconify(icon=icon, width=22),
             variant="subtle",
             size="lg",
             color="gray",
+            **{"aria-label": label},
         ),
         href=href,
         target="_blank",
+        **{"aria-label": label},
     )
 
 
@@ -60,6 +89,7 @@ def create_header(data):
                             size="lg",
                             color="gray",
                             hiddenFrom="md",
+                            **{"aria-label": "Open navigation menu"},
                         ),
                         # Desktop-only burger: collapses/expands the AppShell navbar
                         # on md-xl screens. Default opened=True so users see the X
@@ -70,6 +100,15 @@ def create_header(data):
                             size="sm",
                             visibleFrom="md",
                         ),
+                        # The home link's accessible name comes from the
+                        # aria-label, NOT the wordmark text: below xs the
+                        # wordmark is display:none (visibleFrom), which
+                        # removes it from the accessibility tree — without
+                        # the label the home link would have no name at
+                        # all on phones (the mail icon is decorative).
+                        # Two forks hit this independently; visibleFrom
+                        # (vs dropping the node) keeps the node in the DOM
+                        # for JS and animations.
                         dmc.Anchor(
                             dmc.Group(
                                 [
@@ -84,18 +123,21 @@ def create_header(data):
                                         fw=700,
                                         c="#228be6",
                                         id="dash-docs-title",
+                                        visibleFrom="xs",
                                     ),
                                 ],
                                 gap="sm",
                             ),
                             href="/",
                             underline=False,
+                            **{"aria-label": "dash-email — home"},
                         ),
                     ],
                     gap="md",
                 ),
 
-                # Right section: Email Builder CTA + Search + PyPI + GitHub + Theme toggle
+                # Right section: Email Builder CTA + Search + PyPI + GitHub +
+                # Theme toggle + Clerk avatar (when on)
                 dmc.Group(
                     [
                         dmc.Anchor(
@@ -112,10 +154,12 @@ def create_header(data):
                         create_link(
                             "simple-icons:pypi",
                             "https://pypi.org/project/dash-email/",
+                            "dash-email on PyPI",
                         ),
                         create_link(
                             "radix-icons:github-logo",
                             GITHUB_URL,
+                            "View the source on GitHub",
                         ),
                         dmc.ActionIcon(
                             [
@@ -134,13 +178,15 @@ def create_header(data):
                             color="yellow",
                             id="color-scheme-toggle",
                             size="lg",
+                            **{"aria-label": "Toggle light / dark color scheme"},
                         ),
+                        create_clerk_avatar(),
                     ],
                     gap="sm",
                 ),
             ],
             justify="space-between",
-            h=70,
+            h=HEADER_HEIGHT,
             px="xl",
         ),
     )
@@ -158,9 +204,27 @@ clientside_callback(
     Input("select-component", "value"),
 )
 
+# Mobile drawer search → navigate (the header Select is hidden below `sm`).
 clientside_callback(
-    """function(n_clicks) { return true }""",
+    """
+    function(value) {
+        if (value) {
+            return value
+        }
+        return window.dash_clientside.no_update
+    }
+    """,
+    Output("url", "href", allow_duplicate=True),
+    Input("mobile-select-component", "value"),
+    prevent_initial_call=True,
+)
+
+# The overlay no longer covers the header, so the hamburger stays reachable
+# while the drawer is open — make a second tap close it.
+clientside_callback(
+    """function(n_clicks, opened) { return !opened }""",
     Output("components-navbar-drawer", "opened"),
     Input("drawer-hamburger-button", "n_clicks"),
+    State("components-navbar-drawer", "opened"),
     prevent_initial_call=True,
 )

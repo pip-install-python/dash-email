@@ -19,8 +19,9 @@ Wiring (custom apps without the markdown TOC aside):
 
 Env:
     AD_SERVER_URL  — ad server origin (default https://2plot.dev)
-    AD_APP_ID      — this app's identity in the network (default "email",
-                     this app's key in the hub's directory)
+    AD_APP_ID      — this app's identity in the network (default
+                     "boilerplate"; a fork MUST override it or its
+                     impressions and clicks land on the template's rows)
 
 Failure behaviour: if the ad server is unreachable the slot simply stays
 hidden, and a 60s circuit breaker stops retrying so an outage never adds
@@ -47,14 +48,22 @@ from dash_iconify import DashIconify
 logger = logging.getLogger(__name__)
 
 AD_SERVER_URL = os.environ.get("AD_SERVER_URL", "https://2plot.dev").rstrip("/")
+
 # "email", NOT "dash-email". This is the app's own key in the hub's network
-# directory — the same string `SATELLITE_APP_KEY` carries for traffic rollups
-# and the bulletin sends as `?app=`. One identifier for this app on every hub
-# surface, so /admin/ad-analytics and /traffic name the same thing and a column
-# of them stays readable. The hub folds the legacy spelling at ingest
+# directory — the same string `SATELLITE_APP_KEY` carries for traffic
+# rollups, `lib/bulletin.py` sends as `?app=`, and `lib/hub_client.py`
+# presents as `X-Satellite-App`. One identifier for this app on every hub
+# surface, so /admin/ad-analytics and /traffic name the same thing and a
+# column of them stays readable. The hub folds the legacy spelling at ingest
 # (`canonical_app_id`), so the rows already logged under "dash-email" are not
 # orphaned — but a new deployment must converge, and render.yaml sets it
-# explicitly rather than leaning on this default.
+# explicitly rather than leaning on this default. (This fork default is a
+# DELIBERATE deviation from the template's "boilerplate": run.py's fork
+# point already claims SATELLITE_APP_KEY, and this keeps the ad identity in
+# step even if that line ever moved.)
+#
+# CHANGING THIS SPLITS HISTORY. The ad server keys impressions and clicks by
+# `app`, so anything logged under the old identifier stays under it.
 APP_ID = os.environ.get("AD_APP_ID", "email")
 
 _TIMEOUT = 2          # seconds per fetch — never stall a page view longer
@@ -76,7 +85,6 @@ def fetch_ad(page: str) -> dict | None:
     with _breaker_lock:
         if time.time() - _last_failure < _COOLDOWN:
             return None
-
     from lib.constants import internal_ua
 
     try:
@@ -141,6 +149,14 @@ def create_ad_component(page_path: str) -> html.Div:
                                 "height": "auto",
                                 "display": "block",
                                 "borderRadius": "8px",
+                                # Reserve the box before the creative loads:
+                                # without a hint the image starts at 0px tall
+                                # and shifts the whole aside when it arrives
+                                # (Lighthouse CLS finding, 2026-08-21). The
+                                # network's ad cards are square; a non-square
+                                # creative still renders fully (height:auto
+                                # wins after load) with only its own delta.
+                                "aspectRatio": "1 / 1",
                             },
                         ),
                         dmc.Text(

@@ -4,6 +4,7 @@ description: Multi-column layouts that render as tables — the only layout emai
 endpoint: /components/rows-columns
 package: dash_email
 icon: tabler:columns
+lastmod: 2026-07-16
 ---
 
 .. llms_copy::Rows & Columns

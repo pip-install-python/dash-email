@@ -258,10 +258,15 @@ def main() -> int:
           "interpolate_index override retired at 2.3.3")
     # A static duplicate of anything register_page() emits is strictly worse
     # than the per-page tag, because engines choose between duplicates blind.
+    # `name="twitter:card"` left this list at the gate-wave pass, on purpose:
+    # Dash declares its copy with `property=`, which Twitter's parser (older
+    # than the OG convention) never reads — so the static name= tag is the
+    # ONLY card declaration any scraper sees, not a duplicate.
+    # tests/test_social_card.py pins both halves of that.
     head = tpl.split("</head>")[0]
     restated = [t for t in ('name="description"', 'property="og:title"',
                             'property="og:description"', 'property="og:type"',
-                            'name="twitter:card"', 'name="twitter:title"',
+                            'name="twitter:title"',
                             'name="twitter:description"')
                 if t in head]
     check("template does not restate per-page meta tags", not restated,
@@ -272,8 +277,8 @@ def main() -> int:
     floor = re.search(r"dash-improve-my-llms\[flask\]>=([\d.]+)", reqs_txt)
     ok_floor = floor is not None and tuple(
         int(x) for x in floor.group(1).split(".")
-    ) >= (2, 3, 3)
-    check("dash-improve-my-llms floor >= 2.3.3", ok_floor,
+    ) >= (2, 6, 1)
+    check("dash-improve-my-llms floor >= 2.6.1 (visible prerender)", ok_floor,
           f">={floor.group(1)}" if floor else "not pinned in requirements.txt")
     check("no leftover OAI-SearchBot workaround",
           "OAI-SearchBot" not in run_code,

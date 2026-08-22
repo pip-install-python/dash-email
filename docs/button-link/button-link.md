@@ -4,6 +4,7 @@ description: Call-to-action buttons and inline hyperlinks that render safely in 
 endpoint: /components/button-link
 package: dash_email
 icon: tabler:hand-click
+lastmod: 2026-07-16
 ---
 
 .. llms_copy::Button & Link

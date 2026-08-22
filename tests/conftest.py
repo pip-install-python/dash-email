@@ -43,6 +43,9 @@ sys.path.insert(0, str(REPO_ROOT))
 
 # --- 1. Neutralise every secret (must precede any import of run.py) ---------
 SECRET_ENV_KEYS = (
+    "CLERK_SECRET_KEY", "CLERK_PUBLISHABLE_KEY", "CLERK_SIGN_IN_URL",
+    "CLERK_SIGN_UP_URL", "CLERK_FRONTEND_API", "CLERK_WEBHOOK_SECRET",
+    "CLERK_IS_SATELLITE", "CLERK_SATELLITE_DOMAIN",
     "CROSS_APP_WEBHOOK_SECRET", "NETWORK_BULLETIN_URL",
     "GOOGLE_API_KEY", "RESEND_API_KEY",
     "SESSION_SECRET", "FLASK_SECRET_KEY",
@@ -58,6 +61,9 @@ for _key in SECRET_ENV_KEYS:
 # happens to send.
 _TMP_STATE = tempfile.mkdtemp(prefix="dash-email-tests-")
 os.environ["TRAFFIC_ANALYTICS_FILE"] = os.path.join(_TMP_STATE, "visitor_analytics.json")
+# Same reason for the control board's override store — and pointing it at a
+# tmp path also keeps the import-time [visibility] boot warning quiet.
+os.environ["PAGE_VISIBILITY_FILE"] = os.path.join(_TMP_STATE, "page_visibility.json")
 # Behind Cloudflare in production; in tests an outbound ip-api.com lookup per
 # hit would make the suite depend on a third party being up.
 os.environ["ANALYTICS_GEO_LOOKUP"] = "0"
@@ -175,11 +181,19 @@ def tmp_state_dir():
 
 @pytest.fixture(scope="session")
 def pages(app_module):
-    """Every registered page as (path, name, entry), sorted by path."""
+    """Every crawlable page as (path, name, entry), sorted by path.
+
+    /admin/* is excluded on purpose: the control board fails CLOSED to
+    anonymous renders (its crawler body is deliberately empty), so the
+    prose-substance sweeps would flag exactly the behavior we want.
+    tests/test_control_board.py owns that page's assertions.
+    """
     import dash
 
     return sorted(
-        ((entry["path"], entry.get("name", ""), entry) for entry in dash.page_registry.values()),
+        ((entry["path"], entry.get("name", ""), entry)
+         for entry in dash.page_registry.values()
+         if not entry["path"].startswith("/admin/")),
         key=lambda item: item[0],
     )
 

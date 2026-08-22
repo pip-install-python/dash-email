@@ -11,6 +11,7 @@ Production (Render/Docker):
     gunicorn run:server -b 0.0.0.0:8054
 """
 import os
+import sys
 
 import dash
 from dash import Dash
@@ -25,31 +26,134 @@ from dotenv import load_dotenv
 # production was unaffected, which is exactly why this stayed invisible.
 load_dotenv()
 
+# THE FORK POINT — claim this app's network identity before any hub-facing
+# module imports. Every module that names this app (satellite_reporter,
+# ad_client, hub_client, bulletin) carries its own fallback default, and
+# after a template sync those defaults can DISAGREE: the byte-copied
+# reporter says "boilerplate" while this fork's other modules say "email",
+# so an unset SATELLITE_APP_KEY files this app's traffic under the
+# TEMPLATE's hub row (found live on pannellum, 2026-08-21). setdefault: a
+# real env value (Render dashboard, the .env loaded above) always wins;
+# this line only closes the unset gap. FORKS CHANGE THIS ONE STRING.
+os.environ.setdefault("SATELLITE_APP_KEY", "email")
+
 from components.appshell import create_appshell  # noqa: E402
 from lib import bulletin, network_directory  # noqa: E402
 from lib.analytics_tracker import tracker  # noqa: E402
 from lib.constants import (  # noqa: E402
+    APP_VERSION,
     DOCS_BASE_URL,
+    OG_IMAGE_ALT,
+    OG_IMAGE_HEIGHT,
+    OG_IMAGE_URL,
+    OG_IMAGE_WIDTH,
     ORIGIN_PLACEHOLDER,
+    PUBLISHER,
+    SAME_AS,
     SITE_BRAND,
     SITE_DESCRIPTION,
     require_owned_base_url,
 )
 
 from dash_improve_my_llms import (  # noqa: E402
+    __version__ as LLMS_PKG_VERSION,
     add_llms_routes,
     LLMSConfig,
     RobotsConfig,
     register_page_metadata,
 )
 
-print(f"[dash-email] Starting Dash {dash.__version__}")
+print(
+    f"[dash-email] Starting Dash {dash.__version__} "
+    f"(dash-improve-my-llms {LLMS_PKG_VERSION})"
+)
+
+# ----------------------------------------------------------------------------
+# Dependency floor — enforced, not advised.
+#
+# An IDE run configuration pointing at another project's virtualenv starts
+# this app quite happily against whatever versions that environment holds,
+# serves visibly older behaviour, and a warning scrolls past above a wall of
+# page-loading logs. So a version below the floor stops the boot and says
+# what to do. Set ALLOW_STALE_DEPS=1 to downgrade to a warning when
+# deliberately testing an older release.
+# ----------------------------------------------------------------------------
+
+# The version requirements.txt pins. 2.6.1 is load-bearing twice over:
+# below it the universal prerender ships with a literal `hidden` attribute,
+# so every visibility-respecting consumer (html-to-text extractors, plausibly
+# crawler content-weighting) reads "Loading..." instead of the page's prose
+# (the outside-audit finding of 2026-08-22) — and below 2.6.0 sitemap
+# <lastmod> is swallowed into **kwargs and silently ignored, so every date
+# the docs frontmatter stamps reverts to invented build dates. The same
+# number lives in requirements.txt, .github/workflows/ci.yml and
+# tests/test_config.py — grep the number, don't move one.
+LLMS_PKG_FLOOR = (2, 6, 1)
+
+ALLOW_STALE_DEPS = os.environ.get("ALLOW_STALE_DEPS", "0") == "1"
+
+
+def _version(text: str) -> tuple:
+    """("2.6.1rc0") -> (2, 6, 1). Trailing rc/dev segments are dropped."""
+    parts = []
+    for chunk in text.split(".")[:3]:
+        digits = ""
+        for char in chunk:
+            if not char.isdigit():
+                break
+            digits += char
+        if not digits:
+            break
+        parts.append(int(digits))
+    return tuple(parts)
+
+
+if LLMS_PKG_FLOOR > _version(LLMS_PKG_VERSION):
+    _floor_msg = (
+        f"dash-improve-my-llms {LLMS_PKG_VERSION} is below the "
+        f"{'.'.join(str(n) for n in LLMS_PKG_FLOOR)} floor in "
+        "requirements.txt. Below 2.6.1 the universal prerender ships "
+        "`hidden`; below 2.6.0 sitemap lastmod dates are silently swallowed; "
+        "below 2.5.1 configure_seo does not exist and the crawler document "
+        "carries no site identity at all.\n"
+        f"    running from: {sys.executable}\n"
+        "    fix: point your run configuration at this project's own .venv, "
+        "or reinstall with `pip install -r requirements.txt`.\n"
+        "    (set ALLOW_STALE_DEPS=1 to start anyway)"
+    )
+    if not ALLOW_STALE_DEPS:
+        raise RuntimeError("\n[dash-email] " + _floor_msg)
+    print("[dash-email] WARNING: " + _floor_msg)
+
+# Imported after the floor on purpose: on a pre-2.5.0 package this name does
+# not exist, and the floor's diagnosis above beats a bare ImportError. The
+# fallback exists only for ALLOW_STALE_DEPS=1 — the floor is fatal otherwise.
+try:
+    from dash_improve_my_llms import configure_seo  # noqa: E402
+except ImportError:  # pragma: no cover — ALLOW_STALE_DEPS with an old package
+
+    def configure_seo(**_kwargs) -> None:
+        print(
+            "[dash-email] WARNING: configure_seo unavailable (pre-2.5.0 "
+            "package) — crawler identity tags and root icons not emitted."
+        )
+
 
 # Refuses to boot in production if the canonical origin is a platform-generated
 # hostname. `*.onrender.com` keeps resolving after the custom domain is
 # attached, so a base URL pointing there splits link equity across two hosts
 # and nothing about the running site looks wrong.
 require_owned_base_url()
+
+# ----------------------------------------------------------------------------
+# Clerk satellite auth. MUST run BEFORE Dash(...) — register_clerk_auth
+# installs @dash.hooks callbacks that fire during app construction, so calling
+# it afterwards silently does nothing. Fully optional: a no-op with no CLERK_*
+# keys, which is the default. See lib/auth.py.
+# ----------------------------------------------------------------------------
+from lib import auth as _auth  # noqa: E402
+
+CLERK_ENABLED = _auth.register()
 
 app = Dash(
     __name__,
@@ -60,10 +164,13 @@ app = Dash(
     # the canonical origin, the JSON-LD urls and the llms.txt links all come
     # from lib/constants.py. A static file cannot import that module, and two
     # hand-maintained copies of an origin is exactly how half a site ends up
-    # pointing at one hostname and half at another.
+    # pointing at one hostname and half at another. __APP_VERSION__ is the
+    # same idea for the JSON-LD `version` field: scripts/check_release.py
+    # already pins APP_VERSION to package.json, so substituting it here means
+    # the published version can never lag a release.
     index_string=open('templates/index.html').read().replace(
         ORIGIN_PLACEHOLDER, DOCS_BASE_URL
-    ),
+    ).replace("__APP_VERSION__", APP_VERSION),
     # Dash interpolates the title placeholder with `self.title` and never
     # resolves the per-page title server-side. From 2.3.3 the package's
     # prerender layer rewrites <title> per route for us, so this is the
@@ -76,20 +183,27 @@ app = Dash(
     title=SITE_BRAND,
 )
 
-# The hand-rolled `interpolate_index` override that used to sit here — injecting
-# a per-route <link rel="canonical"> and <meta og:url>, plus the real page title
-# — has been removed. It was written against 2.0.0, which shipped neither.
-#
-# 2.3.3's prerender layer emits both, tagged `data-dimll-prerender="1"`, and
-# rewrites <title> per route regardless of what we pass. Keeping our copy meant
-# two <link rel="canonical"> tags on every browser response (the crawler path
-# was already clean, because the prerenderer rebuilds that document rather than
-# appending to it) and a title override that the package overwrote anyway.
-#
-# Canonical, og:url, og:title, og:description, the markdown `rel="alternate"`
-# and the sitemap link are the package's job now. What remains ours is the
-# site-level set it does not emit — og:site_name, og:locale, keywords, author —
-# which lives in templates/index.html.
+# dash-clerk-auth splits its setup either side of Dash(...): sessions, the
+# /api/auth/* routes and per-request identity are wired here. No-op when off.
+_auth.configure_app(app)
+
+# ----------------------------------------------------------------------------
+# Trust the proxy's forwarded scheme. Immediately after the server object
+# exists and before anything can serve a request. Dash builds `twitter:url`
+# from `request.url` for every page, and behind Cloudflare -> Render the last
+# hop is plain HTTP, so the site would advertise `http://email.2plot.dev/` to
+# every social scraper while `og:url` (which templates/index.html hard-codes)
+# looked correct. Scrapers do not run JavaScript, so the client-side canonical
+# sync in the template cannot reach this. See lib/proxy.py.
+# ----------------------------------------------------------------------------
+from lib import proxy as _proxy  # noqa: E402
+
+PROXY_FIX_APPLIED = _proxy.apply(app, "flask")
+print(
+    "[dash-email] forwarded-scheme trust: "
+    + ("on" if PROXY_FIX_APPLIED else "OFF — request.url will report the "
+       "scheme of the last proxy hop, and social cards will advertise it")
+)
 
 # ============================================================================
 # AI/LLM & SEO configuration (dash-improve-my-llms)
@@ -103,25 +217,17 @@ app._base_url = DOCS_BASE_URL
 # an agent landing here sees one library and nothing saying the rest exist —
 # sitemap.xml cannot help, being scoped to its own origin by design.
 #
-# The definition lives in lib/network_directory.py (copied from the
+# The definition lives in lib/network_directory.py (copied verbatim from the
 # boilerplate) and `peers_for()` drops this app from its own peer list.
 # Must run before add_llms_routes so the routes are built with it in place.
 network_directory.apply(DOCS_BASE_URL)
 
-# The hand-written `custom_rules` block that used to live here is gone. It
-# existed to counter a dash-improve-my-llms 2.0.0 bug that emitted
-# `OAI-SearchBot: Disallow: /` from inside the *allow* branch; that was fixed
-# upstream in 2.3.2, and requirements.txt now floors at 2.5.1. Keeping the
-# workaround on top of a fixed package would emit two groups for the same
-# user-agent and leave the outcome to each crawler's merge semantics.
-#
 # `block_ai_training=True` is correct as of 2.3.3, which buckets per vendor
 # rather than per company: the training crawlers (GPTBot, ClaudeBot, CCBot, …)
 # are disallowed, while the user-triggered and search fetchers — Claude-User,
 # Claude-SearchBot, ChatGPT-User, OAI-SearchBot, PerplexityBot — stay allowed.
-# The old reason to run `False` (blocking broke claude.ai fetches through the
-# legacy aliases) no longer applies. Note that `False` does not mean "balanced":
-# it never emits the training bucket at all, which silently allows training.
+# Note that `False` does not mean "balanced": it never emits the training
+# bucket at all, which silently allows training.
 app._robots_config = RobotsConfig(
     block_ai_training=True,       # Disallow GPTBot, ClaudeBot, CCBot, etc.
     allow_ai_search=True,         # Allow Claude-User/-SearchBot, ChatGPT-User, ...
@@ -134,16 +240,22 @@ app._robots_config = RobotsConfig(
 # that, and it says "Home". This is what dash-improve-my-llms 2.3.4's
 # `resolve_site_title` reads first, so it is the /llms.txt H1 and the llms
 # viewer's brand chip: the two surfaces an agent uses to learn what this site
-# is. It published a bare "# Dash Email" until this pass — a name that matches
-# no package on PyPI and no repository on GitHub.
+# is.
 #
 # `resolve_site_title` SKIPS generic candidates ("Home", "Index", "Dash"), so
 # passing the page's display name here would silently fall through to
 # `app.title` instead of erroring. Nothing would look broken.
+#
+# schema_type matches the static JSON-LD in templates/index.html:
+# SoftwareSourceCode, not SoftwareApplication — this describes an open-source
+# library you import, not a hosted app you sign up for. NO lastmod here, on
+# purpose: the home page is a living index and declares no date rather than
+# an invented one; docs pages stamp real dates in their frontmatter.
 register_page_metadata(
     path="/",
     name=SITE_BRAND,
     description=SITE_DESCRIPTION,
+    schema_type="SoftwareSourceCode",
 )
 
 register_page_metadata(
@@ -170,14 +282,46 @@ register_page_metadata(
 )
 
 # ============================================================================
+# Site identity for the CRAWLER document (dash-improve-my-llms 2.5.0).
+# Until 2.5.0 the generated crawler HTML carried the page's content signals
+# and none of its identity: browsers got the icon links, og:image and a
+# twitter card from templates/index.html while Googlebot got zero of any of
+# them — so search showed the generic globe. One declaration covers every
+# crawler surface, and it also claims /favicon.ico (Google's fallback), which
+# Dash's page catch-all was answering with the app shell. Content may differ
+# between the crawler document and the browser document; identity may not.
+# ============================================================================
+configure_seo(
+    icons=[
+        # Same paths templates/index.html links, so the two heads agree.
+        # The .ico href is the assets/favicon/ copy (byte-identical to the
+        # root one Dash's {%favicon%} placeholder finds) so this list is
+        # SET-equal to what 2.6.0's autodiscovery finds —
+        # tests/test_seo_icons.py pins that agreement.
+        "/assets/favicon/favicon.ico",
+        {"href": "/assets/favicon/favicon-32x32.png", "sizes": "32x32"},
+        {"href": "/assets/favicon/favicon-16x16.png", "sizes": "16x16"},
+        {"href": "/assets/favicon/favicon-96x96.png", "sizes": "96x96"},
+        {"href": "/assets/favicon/android-chrome-192x192.png", "sizes": "192x192"},
+        {"href": "/assets/favicon/android-chrome-512x512.png", "sizes": "512x512"},
+        {"href": "/assets/favicon/apple-touch-icon.png",
+         "rel": "apple-touch-icon", "sizes": "180x180"},
+    ],
+    social_image=OG_IMAGE_URL,
+    social_image_alt=OG_IMAGE_ALT,
+    social_image_width=OG_IMAGE_WIDTH,
+    social_image_height=OG_IMAGE_HEIGHT,
+    publisher=PUBLISHER,
+    same_as=SAME_AS,
+)
+
+# ============================================================================
 # Visitor tracking — MUST be registered BEFORE add_llms_routes.
 #
 # add_llms_routes installs bot-detection middleware that answers recognised
 # crawlers with its own prerendered response. A `before_request` hook added
 # after it never runs for exactly the bot traffic a documentation site most
 # wants counted, so the `bot_hits` reported to 2plot.ai would be quietly low.
-# The old lib/traffic_reporter.py wiring sat at the very bottom of this file
-# and had precisely that flaw.
 #
 # Headers are passed so the tracker can read the real client IP and country
 # from the proxy: behind Render or Cloudflare, `remote_addr` is the proxy and
@@ -200,24 +344,6 @@ def track_visitor():
         pass
 
 
-# Tiered corpus documents (dash-improve-my-llms >= 2.4.0). Pseudo-paths:
-# they never enter dash.page_registry, so they cannot leak into listings —
-# registering them here lets this satellite tier its compact briefing and
-# full corpus via env (LLMS_SMALL_TIER / LLMS_FULL_TIER; unset = the
-# default tier, i.e. public), and the hub can tighten either network-wide
-# through its page-tier ceilings with no redeploy here. This fork carries
-# no access-control layer, so the registrations are measurement + knob
-# surface only; nothing gates on them locally. Inert on older package
-# versions.
-from lib import page_tiers as _page_tiers  # noqa: E402
-
-_page_tiers.register("/llms-small.txt", os.environ.get("LLMS_SMALL_TIER"))
-_page_tiers.register("/llms-full.txt", os.environ.get("LLMS_FULL_TIER"))
-
-# Wires /llms.txt, /<page>/llms.txt, /robots.txt, /sitemap.xml and
-# bot-detection middleware.
-add_llms_routes(app, LLMSConfig(warn_missing_llms_doc=True))
-
 # The hub's announcement feed, rendered in the header of this site's llms.txt
 # viewer. Opt-in: with NETWORK_BULLETIN_URL unset it wires nothing and the
 # viewer still renders on the package's built-in tips. The boot line says which
@@ -230,6 +356,56 @@ print(
 )
 
 # ============================================================================
+# Access control (dash-improve-my-llms 2.3). Reads the tiers the pages just
+# declared, so it must run after they are registered and before the routes are
+# attached. Stays OFF unless some page declares a non-public tier — the policy
+# and the reasoning live in lib/access.py.
+# ============================================================================
+
+from lib import access as _access  # noqa: E402
+from lib import page_tiers as _page_tiers  # noqa: E402
+from lib import page_visibility as _page_visibility  # noqa: E402
+
+# Tiered corpus documents (dash-improve-my-llms >= 2.4.0). Pseudo-paths:
+# they never enter dash.page_registry, so they cannot leak into listings —
+# registering them here lets this satellite tier its compact briefing and
+# full corpus via env (LLMS_SMALL_TIER / LLMS_FULL_TIER), and the hub can
+# tighten either network-wide through its page-tier ceilings with no
+# redeploy here. The explicit `or "public"` matters: these registered under
+# the PAGE_DEFAULT_TIER fallback before, which meant flipping that env to
+# gate the *interactive* site would silently gate the corpus documents too.
+# Their tier is now always a deliberate setting, never an ambient default.
+_page_tiers.register("/llms-small.txt",
+                     os.environ.get("LLMS_SMALL_TIER") or "public")
+_page_tiers.register("/llms-full.txt",
+                     os.environ.get("LLMS_FULL_TIER") or "public")
+
+# The home page registers via pages/home.py, not pages/markdown.py, so no
+# frontmatter ever declares its tier — under PAGE_DEFAULT_TIER=auth it would
+# silently inherit the gate. The funnel's front door stays public, always.
+_page_tiers.register("/", "public")
+
+# The builder is this site's showcase app, registered in pages/email_builder.py
+# with no frontmatter and no gate wrapper (only markdown pages render through
+# lib/gate_layouts). Pinning it public keeps the tier ledger truthful: without
+# this, a PAGE_DEFAULT_TIER=auth flip would list a "gated" page nothing
+# actually gates.
+_page_tiers.register("/email-builder", "public")
+
+# force= when either gate env is present: with every tier still public the
+# auto-detect would skip the wiring, but a host that flips by env needs the
+# verdict plumbing (and the prerender's use of it) live during the dark
+# launch, not on the flip.
+ACCESS_ENABLED = _access.configure(
+    force=bool(os.environ.get("PAGE_DEFAULT_TIER")
+               or os.environ.get("LLMS_PUBLIC_DEFAULT"))
+)
+
+# Wires /llms.txt, /<page>/llms.txt, /robots.txt, /sitemap.xml and
+# bot-detection middleware.
+add_llms_routes(app, LLMSConfig(warn_missing_llms_doc=True))
+
+# ============================================================================
 
 app.layout = create_appshell(dash.page_registry.values())
 
@@ -239,25 +415,57 @@ server = app.server
 @server.route("/healthz")
 def healthz():
     """Liveness probe: Render's health check, the hub's hourly sweep, CD's
-    sustained-health loop and scripts/network_smoke.py all read this.
+    build-match wait and scripts/network_smoke.py all read this.
 
     `ok: true` is the network-standard field — the battery asserts on it, so a
     host that answers 200 with a body of some other shape reads as unhealthy
     across the whole fleet. `status` and `dash` are kept because Render's
     dashboard and the existing runbooks show them.
 
+    `build` is which commit the RUNNING instance was built from
+    (RENDER_GIT_COMMIT). It is what lets CD verify the artifact it shipped
+    rather than whichever build happens to be serving: a bare 200 proves
+    nothing about WHICH build answered (the muicharts finding, 2026-08-21 —
+    its battery had been verifying the previous release on every run,
+    invisibly). Optional on purpose: omitted where the platform variable does
+    not exist, so the fleet's probe contract is unchanged.
+
     Never counted as a visit: lib/analytics_tracker drops /healthz at write
     time, because Render probes it far more often than anyone reads the docs.
     """
-    return {"ok": True, "status": "ok", "dash": dash.__version__}
+    payload = {"ok": True, "status": "ok", "dash": dash.__version__}
+    build = os.environ.get("RENDER_GIT_COMMIT")
+    if build:
+        payload["build"] = build
+    return payload
 
+
+# ============================================================================
+# The person→agent handoff: /api/agent-key turns the browser's Clerk session
+# into a portable ?key= for copied llms.txt URLs (lib/agent_key.py). 204 for
+# everyone until Clerk and the hub are configured — safe to mount always.
+# ============================================================================
+
+from lib.agent_key import register_agent_key_route  # noqa: E402
+
+register_agent_key_route(app, "flask")
+
+_non_public = sum(1 for t in _page_tiers.registered().values() if t != "public")
+print(
+    f"[email] interactive gate: default tier "
+    f"'{os.environ.get('PAGE_DEFAULT_TIER') or 'public'}', "
+    f"{_non_public} non-public page(s), machine surfaces "
+    f"{'GATED' if not _page_tiers.get_llms_public('/__probe__') else 'open'} "
+    f"by default (LLMS_PUBLIC_DEFAULT), access wiring "
+    f"{'ON' if ACCESS_ENABLED else 'off'}, control board at "
+    f"/admin/control-board ({_page_visibility.override_count()} live "
+    f"override(s)) — dash-improve-my-llms {LLMS_PKG_VERSION}."
+)
 
 # Hourly signed rollup POSTed to 2plot.ai so the hub's owner-only /traffic
 # dashboard can chart this app alongside the network. No-op unless
 # CROSS_APP_WEBHOOK_SECRET is set. A flock lease means exactly one worker
-# reports per interval rather than N racing duplicates — which the previous
-# hand-rolled reporter did not have, and which only stayed invisible because
-# render.yaml pins WEB_WORKERS=1.
+# reports per interval rather than N racing duplicates.
 from lib.satellite_reporter import start_reporter  # noqa: E402
 
 start_reporter()

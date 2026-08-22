@@ -45,7 +45,7 @@ setup(
     ],
     extras_require={
         "demo": [
-            "dash-mantine-components>=2.7.0",
+            "dash-mantine-components>=2.8.0",
             "dash-iconify>=0.1.2",
             "google-genai>=1.0.0",
             "resend>=2.0.0",

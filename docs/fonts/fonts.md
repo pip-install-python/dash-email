@@ -4,6 +4,7 @@ description: Load web fonts with graceful fallbacks using EmailFont.
 endpoint: /components/fonts
 package: dash_email
 icon: tabler:letter-case
+lastmod: 2026-07-16
 ---
 
 .. llms_copy::Custom Fonts

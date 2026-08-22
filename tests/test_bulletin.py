@@ -54,13 +54,45 @@ def test_configure_reports_that_it_wired(monkeypatch):
     assert seen["app_id"] == "email"
 
 
-def test_the_app_id_is_the_directory_key_not_a_second_opinion():
+def test_the_app_id_is_the_directory_key_not_a_second_opinion(app_module):
     """One id on every hub surface. A satellite still announcing itself as
-    "boilerplate" would receive the template's announcements."""
+    "boilerplate" would receive the template's announcements.
+
+    `app_module` is load-bearing, not incidental: since the gate-wave pass the
+    reporter is BYTE-IDENTICAL to the template's, so its own fallback says
+    "boilerplate" — the "email" identity comes from run.py's fork point
+    (`os.environ.setdefault("SATELLITE_APP_KEY", "email")`), which only exists
+    once run.py has imported.
+    """
     from lib import bulletin
     from lib.satellite_reporter import app_key
 
     assert bulletin.app_id() == app_key() == "email"
+
+
+def test_every_hub_surface_names_this_app_the_same_way(app_module):
+    """Ads, traffic, the bulletin and the hub client all say "email".
+
+    Four modules present an identity to the hub and each has its own
+    fallback, so they can drift apart without anything failing — the symptom
+    is a column on /admin/ad-analytics that does not line up with /traffic,
+    which nobody reconciles. The byte-copied reporter's own fallback says
+    "boilerplate" (deliberately — shasum vs the template is the acceptance
+    check); run.py's fork point is what closes that gap, and this test is
+    what fails if a future sync drops that one line (the pannellum
+    contamination, 2026-08-21).
+    """
+    import os
+
+    from lib import ad_client, bulletin, hub_client, satellite_reporter
+
+    assert os.environ.get("SATELLITE_APP_KEY") == "email", (
+        "run.py's fork point did not claim this app's identity"
+    )
+    assert ad_client.APP_ID == "email"
+    assert satellite_reporter.app_key() == "email"
+    assert hub_client.app_id() == "email"
+    assert bulletin.app_id() == "email"
 
 
 def test_a_bad_ttl_falls_back_rather_than_crashing_the_boot(monkeypatch):

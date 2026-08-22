@@ -24,6 +24,22 @@ ENV PYTHONUNBUFFERED=1
 
 RUN pip install --no-cache-dir --upgrade pip
 
+# vendor/ holds dash_clerk_auth (not on PyPI), which requirements.txt installs
+# from this path — so vendor/ MUST be copied before the requirements install
+# (emojimart's image died on the reverse order, and pip reports the missing
+# path as a SOFT warning before an OSError that reads like a registry
+# outage). Auth stays gated at runtime: no CLERK_* keys, no login wall.
+#
+# CACHE SEMANTICS (the round-2 fleet lesson, found by pannellum
+# 2026-08-22): this layer re-runs ONLY when vendor/ or requirements.txt
+# bytes change. A `>=` floor can NEVER pull a newer release through a
+# cache hit — a code-only commit rebuilds the app layers below while pip
+# silently keeps whatever version the image was first built with. Ship
+# every dependency upgrade as a floor bump in requirements.txt (grep the
+# number — it also lives in run.py's boot floor and the tests): the bump
+# IS the cache bust, and the boot floor turns a stale image from a
+# silent downgrade into a loud refusal to start.
+COPY vendor/ ./vendor/
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 # markdown2dash pins gunicorn<22, conflicting with the CVE-driven gunicorn>=23

@@ -107,16 +107,33 @@
     <meta property="og:image:alt" content="dash-email — email components for Dash">
 
     <!-- Same rule as above: Dash emits twitter:card, twitter:url,
-         twitter:title, twitter:description and twitter:image per page. Only
-         the alt text is left, because Dash omits it. -->
+         twitter:title, twitter:description and twitter:image per page.
+
+         BUT: Dash declares them with `property=`, and Twitter reads `name=`
+         — its parser predates the OG convention and never adopted it. So
+         Dash's five are invisible to the one platform they exist for, and
+         the two tags below are the ones actually read: the card type
+         declared with `name=`, and the alt text Dash omits entirely. The
+         rest (title, description, image) falls back to the og:* set, which
+         Twitter does read. Measured 2026-08-14: without this line no page
+         on the network declared a card type any scraper could see. -->
+    <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:image:alt" content="dash-email — email components for Dash">
 
     <!-- Keeps canonical / og:url / twitter:url correct across CLIENT-SIDE
          navigation only. dash-improve-my-llms 2.3.3 emits all three
-         server-side per route (tagged data-dimll-prerender), so the raw
-         document is already right — this exists solely because Dash routes
-         without firing a navigation event, which leaves those tags describing
-         the page the visitor first landed on.
+         server-side per route (tagged with the package's prerender marker
+         attribute), so the raw document is already right — this exists solely
+         because Dash routes without firing a navigation event, which leaves
+         those tags describing the page the visitor first landed on.
+
+         NEVER SPELL THAT MARKER ATTRIBUTE OUT IN THIS FILE, comments
+         included. The package's injector checks `marker in document` to stay
+         idempotent, so a comment that names it makes every response read as
+         "already injected" and the universal prerender silently never runs —
+         THE defect that had email.2plot.dev serving NO prerender block to any
+         browser until the 2026-08-22 gate-wave pass, measured live from the
+         outside. Same failure class as the Dash-placeholder rule above.
 
          UPDATE-ONLY, deliberately: it never creates a tag the server did not
          send. Creating one would put a second <link rel="canonical"> on the
@@ -189,10 +206,11 @@
                 "programmingLanguage": ["Python", "JavaScript"],
                 "runtimePlatform": "Python 3.9+, Dash 4.1+",
                 "license": "https://opensource.org/licenses/MIT",
+                "version": "__APP_VERSION__",
                 "author": {
                     "@type": "Organization",
                     "name": "Pip Install Python LLC",
-                    "url": "https://pip-install-python.com"
+                    "url": "https://2plot.ai"
                 }
             },
             {
@@ -202,7 +220,7 @@
                 "publisher": {
                     "@type": "Organization",
                     "name": "Pip Install Python LLC",
-                    "url": "https://pip-install-python.com"
+                    "url": "https://2plot.ai"
                 }
             }
         ]

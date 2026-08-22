@@ -109,9 +109,13 @@ jobs:
               return tuple(int(x) for x in v.split(".")[:3] if x.isdigit())
 
           assert parts(dash.__version__)[:2] >= (4, 1), dash.__version__
-          # 2.3.4 is the network standard: below it `resolve_site_title` does
-          # not exist and this site's published identity degrades to app.title.
-          assert parts(pkg.__version__) >= (2, 3, 4), pkg.__version__
+          # 2.6.1 is the gate-wave floor: below it the universal prerender
+          # ships `hidden` (text extractors read "Loading..."), below 2.6.0
+          # sitemap lastmod is silently swallowed, and below 2.3.4
+          # `resolve_site_title` does not exist and this site's published
+          # identity degrades to app.title. Same number as requirements.txt
+          # and run.py's boot floor — grep it, don't move one.
+          assert parts(pkg.__version__) >= (2, 6, 1), pkg.__version__
           # 21.x carried two request-smuggling CVEs (CVE-2024-6827,
           # CVE-2024-1135). markdown2dash's spurious <22 pin must not win.
           assert parts(gunicorn.__version__)[:2] >= (23, 0), gunicorn.__version__
@@ -178,7 +182,24 @@ jobs:
 
           v = version('dash-improve-my-llms')
           print('dash-improve-my-llms', v)
-          assert parts(v) >= (2, 3, 4), f'expected >=2.3.4 (resolve_site_title), image has {v}'
+          assert parts(v) >= (2, 6, 1), f'expected >=2.6.1 (visible prerender), image has {v}'
+
+          # The vendored Clerk stack, asserted INSIDE the artifact. The
+          # import matters as much as the version: a vendor/ directory that
+          # resolved empty at build time installs nothing, silently — pip
+          # only soft-warns before dying on an OSError that reads like a
+          # registry outage (the emojimart image failure, batch 1).
+          v = version('dash-clerk-auth')
+          print('dash-clerk-auth', v)
+          assert v == '1.0.5', f'expected vendored 1.0.5, image has {v}'
+          import dash_clerk_auth  # noqa: F401
+          print('dash_clerk_auth importable')
+          v = version('clerk-backend-api')
+          print('clerk-backend-api', v)
+          assert parts(v) >= (7, 0), f'expected >=7 (cryptography floor room), image has {v}'
+          v = version('cryptography')
+          print('cryptography', v)
+          assert parts(v) >= (50, 0), f'expected >=50 (four advisories), image has {v}'
 
           # markdown2dash installs with --no-deps to dodge its gunicorn<22
           # pin; this assert is what proves the dodge kept working. 21.x

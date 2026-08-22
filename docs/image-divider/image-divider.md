@@ -4,6 +4,7 @@ description: Images with explicit dimensions and horizontal rules for separating
 endpoint: /components/image-divider
 package: dash_email
 icon: tabler:photo
+lastmod: 2026-07-16
 ---
 
 .. llms_copy::Image & Divider

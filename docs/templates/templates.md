@@ -4,6 +4,7 @@ description: Complete, copy-paste-ready email templates combining all the compon
 endpoint: /templates
 package: dash_email
 icon: tabler:template
+lastmod: 2026-07-16
 ---
 
 .. llms_copy::Full Templates

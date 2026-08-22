@@ -32,7 +32,7 @@
 
 <br/>
 
-_Maintained by **[Pip Install Python LLC](https://pip-install-python.com)**._
+_Maintained by **[Pip Install Python LLC](https://2plot.ai)**._
 
 </div>
 

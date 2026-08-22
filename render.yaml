@@ -22,6 +22,20 @@
 #        b. 2plotai `lib/network_directory.py` — add the `email` key so
 #           /traffic labels the series instead of showing a bare slug
 #        c. the ad network keys off AD_APP_ID (`dash-email`) separately
+#   6. LINK ENV GROUPS A/B/C in the dashboard (a Blueprint cannot do this):
+#        A `2plot-network-shared`      — CROSS_APP_WEBHOOK_SECRET,
+#          ADMIN_EMAILS, ANALYTICS_GEO_LOOKUP, AD_SERVER_URL,
+#          NETWORK_BULLETIN_URL, LLMS_SMALL_TIER, LLMS_FULL_TIER
+#        B `2plot-satellite-reporting` — SATELLITE_TRAFFIC_URL, the report/
+#          presence cadence, TRAFFIC_ANALYTICS_FILE, PAGE_VISIBILITY_FILE
+#        C `2plot-clerk-satellite`     — the full CLERK_* block incl.
+#          CLERK_SATELLITE_SIGN_IN_REDIRECT
+#      A service-level var with the same name OVERRIDES the group value, so
+#      the entries below that duplicate a group are documentation + local-dev
+#      defaults; on the live service the groups are the source of truth
+#      (delete same-value service copies on the next shadow sweep). The four
+#      per-service identity vars stay HERE by design: SATELLITE_APP_KEY,
+#      APP_BASE_URL, SESSION_SECRET (unique!), AD_APP_ID.
 services:
   - type: web
     name: dash-email-docs
@@ -87,12 +101,98 @@ services:
         value: public
       - key: LLMS_FULL_TIER
         value: public
+      # 15 minutes, not the code default of hourly: the fleet is on paid
+      # instances and the hub board reads near-real-time. The live
+      # "active now" number rides the separate presence beacon
+      # (SATELLITE_PRESENCE_INTERVAL_S, default 60s, 0 disables) — this knob
+      # only paces the daily rollup. Arrives via group B on the live service.
+      - key: SATELLITE_REPORT_INTERVAL_S
+        value: "900"
+
+      # --- The interactive gate (lib/gate_layouts.py) ---------------------
+      # THE per-host gate switch: flip to `auth` and every docs page whose
+      # frontmatter doesn't pin a tier shows the sign-in card to anonymous
+      # browsers. Rollback is flipping it back — env only, no code revert.
+      # Funnel pages (/, /email-builder, the corpus pseudo-paths) are pinned
+      # public in code and never inherit this. Declared EXPLICITLY at the
+      # dark-ship value even though unset means the same thing: the
+      # declared-vs-live env diff flags its absence as drift forever, and
+      # the flip becomes a value edit on an existing var instead of a
+      # var-add (wave posture, 2026-08-21).
+      - key: PAGE_DEFAULT_TIER
+        value: public
+      # The second axis, and the phase-4 agent flip: while "1", machine
+      # surfaces (llms.txt family, crawler HTML, the prerender) stay open on
+      # auth pages so the crawl-demand window keeps measuring. "0" gates
+      # anonymous machine fetches too (keyed agents still pass). Do not flip
+      # before the window closes.
+      - key: LLMS_PUBLIC_DEFAULT
+        value: "1"
+
+      # --- Clerk satellite auth (lib/auth.py) -----------------------------
+      # All OPTIONAL: absent, the site runs fully public and admin surfaces
+      # fail CLOSED (lib.auth.admin_access_open). On the live service this
+      # whole block arrives via env group C (`2plot-clerk-satellite`); the
+      # entries here document the shape for a Blueprint-only deploy.
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: CLERK_PUBLISHABLE_KEY
+        sync: false
+      # The 2plot.ai PRIMARY on its production Clerk instance (Account
+      # Portal + Frontend API custom domains — not *.accounts.dev).
+      - key: CLERK_SIGN_IN_URL
+        value: https://accounts.2plot.ai/sign-in
+      - key: CLERK_SIGN_UP_URL
+        value: https://accounts.2plot.ai/sign-up
+      # THE RETURN TRIP — the stage-5 blocker leaflet's pilot surfaced
+      # (2026-08-21 handoff). Unset, buildSatelliteRedirect() returns null,
+      # every sign-in path falls through to the Clerk Account Portal, the
+      # hub's return machinery never runs, and the user authenticates
+      # successfully and STAYS on the primary — no error anywhere.
+      # A DESTINATION, not a flag: the value is concatenated as
+      # `<value>?returnTo=<here>`, so `true` or a bare host resolves against
+      # THIS site and the button 404s — worse than unset. lib/auth.py warns
+      # at boot for both mistakes; the absence of those warnings is the
+      # deploy acceptance check.
+      - key: CLERK_SATELLITE_SIGN_IN_REDIRECT
+        value: https://2plot.ai/onboarding
+      # REQUIRED in satellite mode; a production custom-domain instance
+      # cannot derive it from CLERK_SIGN_IN_URL.
+      - key: CLERK_FRONTEND_API
+        value: https://clerk.2plot.ai
+      # The REGISTERED SATELLITE DOMAIN — deliberately NOT the host this app
+      # is served on. Every *.2plot.dev docs host is an ALLOWED SUBDOMAIN of
+      # the 2plot.dev satellite; clerk.email.2plot.dev is NXDOMAIN and
+      # setting it here hangs sign-in. Session cookies are scoped to
+      # .2plot.dev, which is exactly what the allowlist enables.
+      - key: CLERK_SATELLITE_DOMAIN
+        value: 2plot.dev
+      - key: CLERK_IS_SATELLITE
+        value: "true"
+      # Signs the session + __dca_identity cookies. UNIQUE per service —
+      # never grouped. Without it dash-clerk-auth falls back to a PUBLIC dev
+      # default string.
+      - key: SESSION_SECRET
+        generateValue: true
+      # Admin allowlist for admin-tier pages (lib.auth.is_admin_user).
+      - key: ADMIN_EMAILS
+        sync: false
+
       # The hub takes the LAST report for a given (app, date). On an ephemeral
       # filesystem a mid-day deploy wipes the ledger and the next hourly report
       # overwrites the day's real total with whatever accrued since the
       # restart. The disk below is what stops that.
       - key: TRAFFIC_ANALYTICS_FILE
         value: /var/data/visitor_analytics.json
+
+      # Control-board overrides (/admin/control-board) persist here — on the
+      # same disk, so toggles survive deploys. A Blueprint env row applies
+      # only on a sync, so the value that matters is group B's on the live
+      # service; the boot prints a [visibility] WARNING when the variable is
+      # missing OR when /var/data is not actually a mounted disk. The
+      # absence of that warning in a deploy log is the acceptance check.
+      - key: PAGE_VISIBILITY_FILE
+        value: /var/data/page_visibility.json
 
     disk:
       name: analytics

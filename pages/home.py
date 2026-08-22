@@ -49,10 +49,20 @@ EmailDivider, EmailFont, EmailHead, EmailPreview) for building, previewing,
 and sending HTML emails from Python.
 
 - Install: `pip install dash-email`
-- Docs: /getting-started and the /components/* pages (each serves /<page>/llms.txt)
-- App: /email-builder — AI-powered template builder (Google Gemini) with live
-  preview, Python code export, and sending via Resend.
-- Source: https://github.com/pip-install-python/dash-email
+- Docs: [Getting Started](/getting-started), the component pages —
+  [Email Structure](/components/email-structure),
+  [Container & Section](/components/container-section),
+  [Rows & Columns](/components/rows-columns),
+  [Heading & Text](/components/heading-text),
+  [Button & Link](/components/button-link),
+  [Image & Divider](/components/image-divider),
+  [Custom Fonts](/components/fonts) — and
+  [Full Templates](/templates). Each serves its own /<page>/llms.txt.
+- App: [Email Builder](/email-builder) — AI-powered template builder
+  (Google Gemini) with live preview, Python code export, and sending via
+  Resend.
+- Source: [github.com/pip-install-python/dash-email](https://github.com/pip-install-python/dash-email)
+  · Package: [pypi.org/project/dash-email](https://pypi.org/project/dash-email/)
 """
 
 # Same {{VERSION:<distribution>}} substitution pages/markdown.py applies to

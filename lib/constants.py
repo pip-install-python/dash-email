@@ -65,6 +65,23 @@ APP_VERSION = "0.2.1"
 
 GITHUB_URL = "https://github.com/pip-install-python/dash-email"
 
+# The package cross-link block — who publishes this site, and which other
+# URLs are the same entity. `SAME_AS` becomes JSON-LD `sameAs` on every
+# crawler page (run.py passes both to `configure_seo`): for a docs satellite
+# it should list the documented package's GitHub repo and PyPI project —
+# three properties pointing at each other is the strongest statement of which
+# URL is a package's canonical docs home.
+PUBLISHER = "Pip Install Python LLC"
+SAME_AS = [
+    GITHUB_URL,
+    "https://pypi.org/project/dash-email/",
+]
+
+# Height of the fixed AppShell header, in px. Consumed by AppShell(header=...)
+# and by the mobile drawer, which docks itself directly below the header.
+# Change it here only — the two must never drift apart.
+HEADER_HEIGHT = 70
+
 # ---------------------------------------------------------------------------
 # Public origin
 # ---------------------------------------------------------------------------

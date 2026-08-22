@@ -1,10 +1,3 @@
-"""Markdown-driven documentation engine.
-
-Globs docs/**/*.md at import time, parses each file's frontmatter and body
-with markdown2dash + custom directives, and registers a Dash page per file.
-Examples referenced by `.. exec::` are isolated modules exposing a
-module-level `component`; `.. source::` shows their source code.
-"""
 import logging
 import re
 from pathlib import Path
@@ -13,13 +6,15 @@ from typing import List, Optional
 import dash
 import dash_mantine_components as dmc
 import frontmatter
+from dash import html
 from dash_improve_my_llms import register_page_metadata
 from markdown2dash import Admonition, BlockExec, Divider, Image, create_parser
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from lib.ad_client import inject_ad_into_aside
 from lib.constants import OG_IMAGE_URL, PAGE_TITLE_PREFIX, NAME_CONTENT_MAP
-from lib import page_tiers
+from lib import gate_layouts, page_tiers, page_visibility
+from lib.directives.headings import patch_renderer
 from lib.directives.kwargs import Kwargs
 from lib.directives.llms_copy import LlmsCopy
 from lib.directives.source import SC
@@ -31,6 +26,7 @@ logging.basicConfig(level=logging.INFO)
 
 directory = "docs"
 
+# read all markdown files
 files = Path(directory).glob("**/*.md")
 
 
@@ -42,27 +38,59 @@ class Meta(BaseModel):
     category: Optional[str] = None
     icon: Optional[str] = None
     # Who may read this page: public | auth | admin | hidden. Absent means
-    # public — see lib/page_tiers.py for the tier model and why the default
-    # is open. This fork has no access-control layer, so the declarations
-    # are measurement + hub-knob surface only; nothing gates on them here.
+    # the deployment default (PAGE_DEFAULT_TIER, else public) — see
+    # lib/page_tiers.py for the tier model and why the default is open.
+    # Enforced only when access control is wired in run.py.
     tier: Optional[str] = None
+    # The second axis: does the machine twin (/<page>/llms.txt, crawler HTML,
+    # the prerender) stay open while the interactive page is gated? Absent
+    # defers to LLMS_PUBLIC_DEFAULT (unset = open — the data-window posture).
+    # Only meaningful on `auth` pages; see lib/page_tiers.get_llms_public.
+    llms_public: Optional[bool] = None
+    # schema.org @type for the crawler document's JSON-LD. Absent means
+    # TechArticle — every page here documents software, and "WebPage" (the
+    # package default) tells Google nothing it did not already know. The
+    # home page declares SoftwareApplication in run.py.
+    schema_type: Optional[str] = None
+    # Sitemap <lastmod>, YYYY-MM-DD, emitted VERBATIM by dash-improve-my-llms
+    # >= 2.6.0 — and omitted entirely when absent. Truth or silence: set it
+    # when the page's content genuinely changes (the frontmatter edit rides
+    # the same commit as the prose), never script it from file mtimes, which
+    # reset on every Docker build and would re-invent the daily-lie sitemap
+    # 2.6.0 exists to end. The validator exists because YAML parses a bare
+    # `lastmod: 2026-08-19` into datetime.date before pydantic ever sees it.
+    lastmod: Optional[str] = None
+
+    @field_validator("lastmod", mode="before")
+    @classmethod
+    def _lastmod_to_iso(cls, value):
+        return value.isoformat() if hasattr(value, "isoformat") else value
 
 
 _SOURCE_DIRECTIVE = re.compile(r'^\.\. source::(.+?)$', re.MULTILINE)
 _LANG_MAP = {
-    'py': 'python',
+    'py': 'python', 'pyi': 'python',
     'js': 'javascript', 'jsx': 'jsx',
-    'css': 'css',
-    'html': 'html',
+    'ts': 'typescript', 'tsx': 'tsx',
+    'css': 'css', 'scss': 'scss', 'sass': 'sass', 'less': 'less',
+    'html': 'html', 'htm': 'html', 'xml': 'xml',
     'json': 'json',
-    'md': 'markdown', 'txt': 'text',
+    'yaml': 'yaml', 'yml': 'yaml',
+    'md': 'markdown', 'rst': 'rst', 'txt': 'text',
     'sh': 'bash', 'bash': 'bash',
+    'sql': 'sql', 'r': 'r',
+    'toml': 'toml', 'ini': 'ini', 'conf': 'conf',
 }
 
 
 def _expand_source_directives(markdown_content: str) -> str:
-    """Inline `.. source::path` directives with the referenced file content
-    so /<page>/llms.txt is self-contained."""
+    """Inline `.. source::path` directives with the referenced file content.
+
+    This produces the prose that dash-improve-my-llms 2.0 will serve at
+    `/<page>/llms.txt`. Replacing the directive with the real file content
+    is what makes the LLM output self-contained for the "paste into a chat
+    window" audience.
+    """
     def replace(match: re.Match) -> str:
         file_path = match.group(1).strip()
         try:
@@ -93,6 +121,11 @@ def _build_llms_doc(name: str, description: str, expanded_markdown: str, path: s
     return "\n".join(parts)
 
 
+# Headings containing inline code/emphasis crash markdown2dash's renderer and,
+# when they don't, get an id their own TOC anchor doesn't match. Must run
+# before create_parser() instantiates the renderer. See lib/directives/headings.
+patch_renderer()
+
 directives = [Admonition(), BlockExec(), Divider(), Image(), Kwargs(), LlmsCopy(), SC(), TOC()]
 parse = create_parser(directives)
 
@@ -104,15 +137,16 @@ for file in files:
     # Substitute derived facts BEFORE any consumer sees the text, so the
     # browser page, the copy button, and /<page>/llms.txt all publish the
     # same truth. A doc writes {{VERSION:<distribution>}} instead of a
-    # version number — any installed package, so this site can document
-    # dash-email's own version the same way. See lib/versions.py for why.
+    # version number — any installed package, so a satellite documents its
+    # own component library the same way. See lib/versions.py for why.
     content = substitute_versions(content, source=str(file))
 
-    # Store raw markdown content for the LLM copy button.
+    # Store raw markdown content in NAME_CONTENT_MAP for the LLM copy button.
     NAME_CONTENT_MAP[metadata.name] = content
 
     layout = parse(content)
 
+    # add heading and description to the layout
     section = [
         dmc.Title(metadata.name, order=2, className="m2d-heading"),
         dmc.Text(metadata.description, className="m2d-paragraph"),
@@ -123,34 +157,76 @@ for file in files:
     # the page's aside (pages without `.. toc::` simply get no ad).
     inject_ad_into_aside(layout, metadata.endpoint)
 
-    # `image_url` is absolute and is what stops Dash emitting `og:image=""` on
-    # every documentation page. Dash builds og:image/twitter:image from this
-    # call (dash/_pages.py); given nothing it INFERS one from the assets folder
-    # and, finding no candidate, ships the tag empty — which scrapers read as a
-    # declared image and render as a blank card. One URL for every page is
-    # correct here: these are documentation pages of one library, not articles
-    # with their own artwork.
+    # Wrap the whole page in ONE container with a page-unique id. dash-renderer
+    # keys React children by component id, and markdown2dash gives every heading
+    # an id derived from its text ("usage", "introduction", ...) so TOC anchors
+    # work. Those ids repeat within and across pages, so when fast navigation
+    # swaps _pages_content.children between two flat layout lists, React
+    # reconciles by colliding keys and splices stale headings from the previous
+    # page into the new one (TOC-only ghost page until you scroll). A single
+    # keyed wrapper per page makes every swap old-node -> new-node: atomic
+    # unmount/mount, no cross-page key matching. Do not flatten this back into
+    # a list.
+    layout = html.Div(
+        layout, id="m2d-page" + metadata.endpoint.replace("/", "-")
+    )
+
+    # register with dash — the layout goes in behind the interactive gate.
+    # The tree is still built once, above; gated_layout only decides per
+    # render whether the visitor gets it or the sign-in/forbidden/404 card
+    # (lib/gate_layouts.py). With every tier public the verdict is a dict
+    # lookup that always says allow, so an ungated fork pays ~nothing.
     dash.register_page(
         metadata.name,
         metadata.endpoint,
         name=metadata.name,
         title=PAGE_TITLE_PREFIX + metadata.name,
         description=metadata.description,
-        image_url=OG_IMAGE_URL,
-        layout=layout,
+        layout=gate_layouts.gated_layout(
+            metadata.endpoint, metadata.name, layout
+        ),
         category=metadata.category,
         icon=metadata.icon,
+        # Without this Dash infers an image from assets/ and finds `logo.svg` —
+        # an SVG, which every social scraper rejects — then emits it ALONGSIDE
+        # the og:image in templates/index.html. See lib.constants.OG_IMAGE_URL.
+        image_url=OG_IMAGE_URL,
     )
 
+    # Feed the expanded markdown into dash-improve-my-llms so /<page>/llms.txt
+    # serves the directive-expanded prose. This replaces the custom Flask
+    # route that used to live in run.py and works across all three backends.
     # Record the declared tier before the prose is registered, so a gate can
     # never be applied later than the content it is meant to gate.
-    page_tiers.register(metadata.endpoint, metadata.tier)
+    #
+    # ONE declared value, TWO ledgers. The control board's row first —
+    # overrides written there win at resolution time (lib.access.local_tier),
+    # which is what makes a board toggle apply live. Then the network ledger:
+    # what the hub's tier ceiling compares against and what lib.access
+    # enforces underneath any override.
+    page_visibility.register_default(metadata.endpoint, metadata.name,
+                                     visibility=metadata.tier,
+                                     llms_public=metadata.llms_public)
+    page_tiers.register(metadata.endpoint, metadata.tier,
+                        llms_public=metadata.llms_public)
 
-    # Serve the directive-expanded prose at /<page>/llms.txt.
     expanded = _expand_source_directives(content)
+    # The full record, matching the dash.register_page call above. These two
+    # calls must never describe the same page differently: the thinner record
+    # here is exactly how the fleet shipped "dash-leaflet2 | Attribution" to
+    # browsers and a bare "Attribution" to Google (the one bug behind every
+    # SEO defect measured across the network, 2026-08). title and image_url
+    # are read by dash-improve-my-llms 2.5.0+; older packages ignore them.
     register_page_metadata(
         path=metadata.endpoint,
         name=metadata.name,
         description=metadata.description,
+        title=PAGE_TITLE_PREFIX + metadata.name,
+        image_url=OG_IMAGE_URL,
+        schema_type=metadata.schema_type or "TechArticle",
+        # Pre-2.6 packages swallow this into **kwargs and ignore it (no
+        # TypeError — measured on 2.5.1); the floor in run.py guarantees
+        # >= 2.6.0, where a real date is emitted and None omits the tag.
+        lastmod=metadata.lastmod,
         llms_doc=_build_llms_doc(metadata.name, metadata.description, expanded, metadata.endpoint),
     )

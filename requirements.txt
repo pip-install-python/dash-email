@@ -4,7 +4,10 @@
 dash>=4.1                     # COMPAT-MATRIX: dash
 
 # --- Documentation site ---
-dash-mantine-components>=2.7.0
+# 2.8.0, not 2.7.0: on 2.7.0 the network-standard mobile drawer renders as a
+# floating card from identical props (measured fleet-wide, 2026-08-22) — the
+# full-height docked panel in components/navbar.py needs 2.8's Drawer.
+dash-mantine-components>=2.8.0
 dash-iconify>=0.1.2
 python-frontmatter>=1.0.0
 pydantic>=2.3.0
@@ -27,16 +30,52 @@ python-dotenv>=1.0.0
 mistune>=3.0.0
 # markdown2dash==0.1.2        <- installed --no-deps, see above
 
-# 2.5.1 is the network floor for the x402 instrumentation pass: it serves the
-# tiered corpus documents (/llms-small.txt, /llms-full.txt) that
-# lib/traffic_rollup.py's v3 machine-surface rows measure, and carries the
-# Tier-B SEO standard (per-page title/image_url/schema_type reaching the
-# crawler document). Below 2.3.4 `resolve_site_title` does not exist and this
-# site's published identity (the /llms.txt H1, the llms viewer's brand chip)
-# silently degrades to `app.title` — tests/test_site_identity.py asserts the
-# installed version, and CI asserts it again inside the image.
-dash-improve-my-llms[flask]>=2.5.1
+# 2.6.1 is the gate-wave floor, load-bearing twice over: below it the
+# universal prerender ships with a literal `hidden` attribute, so every
+# visibility-respecting consumer (html-to-text extractors, plausibly crawler
+# content-weighting) reads "Loading..." instead of the page's prose — the
+# outside-audit finding of 2026-08-22. Below 2.6.0 sitemap <lastmod> is
+# swallowed into **kwargs and silently ignored, so every date the docs
+# frontmatter stamps reverts to invented build dates. 2.5.1 remains the
+# Tier-B SEO standard underneath (configure_seo, tiered corpus documents,
+# per-page title/image_url/schema_type reaching the crawler document); below
+# 2.3.4 `resolve_site_title` does not exist and this site's published
+# identity silently degrades to `app.title`. The same number lives in
+# run.py's boot floor, .github/workflows/ci.yml (twice) and
+# tests/test_config.py — grep the number, don't move one. Floor, not pin:
+# the floor bump IS the Docker cache bust (see the Dockerfile).
+dash-improve-my-llms[flask]>=2.6.1
+# This fork is Flask-only (no lib/backend.py), so the other extras are not
+# installed — the commented lines exist because a floor lives in EVERY
+# encoding of it, and a future backend port must not resurrect an old number:
+# dash-improve-my-llms[fastapi]>=2.6.1   # Dash 4.4+ FastAPI backend
+# dash-improve-my-llms[quart]>=2.6.1     # Dash 4.4+ Quart backend
 requests>=2.27.1              # 2plot.dev ad-network client (lib/ad_client.py)
+
+# Clerk authentication (dash-clerk-auth, vendored — not on PyPI).
+#
+# Installed ALWAYS, gated at runtime: with no CLERK_* keys in the
+# environment, lib/auth.py registers nothing and the site runs fully public.
+# The interactive gate ships DARK — flipping PAGE_DEFAULT_TIER=auth per host
+# is an env change, never a code change.
+#
+# The floors below are the fleet security baseline, not a preference:
+# clerk-backend-api 5.x capped cryptography at <47.0.0 — below the fixes for
+# GHSA-537c-gmf6-5ccf (48.0.1), PYSEC-2026-3553/3554 (49.0.0) and
+# PYSEC-2026-3552 (50.0.0). SDK 7.0.0 allows cryptography <51.0.0, and
+# dash-clerk-auth 1.0.1 widened its cap to <8 exactly so applications can
+# assert these floors rather than merely permit them.
+#
+# PROVENANCE — the dist/ tarball is the release; there is no PyPI:
+#   sha256  a2f9062e15a69fc79deeaf76fcf1380907a961978db558b2aa227572cb2b74f3
+# GENERAL RULE, twice-proven (1.0.4's 22117b20…, 1.0.5's first build):
+# early builds go stale on sdist-shipped doc edits and are not
+# distinguishable by name, size or date — ONLY the recorded sha admits
+# a tarball into this file. Vendor from Dash-Clerk-Auth-Hook's dist/
+# and verify before every copy.
+./vendor/dash_clerk_auth-1.0.5.tar.gz
+clerk-backend-api>=7.0.0,<8
+cryptography>=50.0.0
 
 # --- Email Builder app (/email-builder) ---
 google-genai>=1.0.0
