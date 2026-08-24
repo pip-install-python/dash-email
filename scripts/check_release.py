@@ -277,8 +277,8 @@ def main() -> int:
     floor = re.search(r"dash-improve-my-llms\[flask\]>=([\d.]+)", reqs_txt)
     ok_floor = floor is not None and tuple(
         int(x) for x in floor.group(1).split(".")
-    ) >= (2, 6, 1)
-    check("dash-improve-my-llms floor >= 2.6.1 (visible prerender)", ok_floor,
+    ) >= (2, 7, 1)
+    check("dash-improve-my-llms floor >= 2.7.1 (H1 dedup + llms.txt v2 relations)", ok_floor,
           f">={floor.group(1)}" if floor else "not pinned in requirements.txt")
     check("no leftover OAI-SearchBot workaround",
           "OAI-SearchBot" not in run_code,

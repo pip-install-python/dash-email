@@ -79,16 +79,25 @@ print(
 # deliberately testing an older release.
 # ----------------------------------------------------------------------------
 
-# The version requirements.txt pins. 2.6.1 is load-bearing twice over:
-# below it the universal prerender ships with a literal `hidden` attribute,
-# so every visibility-respecting consumer (html-to-text extractors, plausibly
-# crawler content-weighting) reads "Loading..." instead of the page's prose
-# (the outside-audit finding of 2026-08-22) — and below 2.6.0 sitemap
-# <lastmod> is swallowed into **kwargs and silently ignored, so every date
-# the docs frontmatter stamps reverts to invented build dates. The same
-# number lives in requirements.txt, .github/workflows/ci.yml and
-# tests/test_config.py — grep the number, don't move one.
-LLMS_PKG_FLOOR = (2, 6, 1)
+# The version requirements.txt pins. 2.7.1 is the round-3 fleet floor:
+# 2.7.0 dedups the prerender H1 (every page served TWO h1s to crawlers —
+# the injected header plus the doc body's own markdown H1) and the home
+# footer's doubled /llms.txt link, and hardens the idempotency probe so a
+# page that MENTIONS the marker no longer loses its prerender (the
+# marker-in-comment trap — the very defect that blanked THIS host's every
+# prerender until the gate-wave pass found it in templates/index.html).
+# 2.7.1 adds the llms.txt v2 discovery relations (rel=alternate/describedby
+# on both lanes + Link headers), the Accept: text/plain ramp, and the
+# representation digest — the surfaces the network's agent lane composes
+# over. Underneath, 2.6.1 keeps the universal prerender VISIBLE (below it
+# the block carries a literal `hidden` attribute, so every
+# visibility-respecting consumer reads "Loading..." instead of the page's
+# prose — the outside-audit finding of 2026-08-22), and 2.6.0 keeps sitemap
+# <lastmod> honored instead of swallowed into **kwargs. The same number
+# lives in requirements.txt, .github/workflows/ci.yml (twice),
+# tests/test_pages.py and scripts/check_release.py — grep the number,
+# don't move one.
+LLMS_PKG_FLOOR = (2, 7, 1)
 
 ALLOW_STALE_DEPS = os.environ.get("ALLOW_STALE_DEPS", "0") == "1"
 
@@ -112,7 +121,14 @@ if LLMS_PKG_FLOOR > _version(LLMS_PKG_VERSION):
     _floor_msg = (
         f"dash-improve-my-llms {LLMS_PKG_VERSION} is below the "
         f"{'.'.join(str(n) for n in LLMS_PKG_FLOOR)} floor in "
-        "requirements.txt. Below 2.6.1 the universal prerender ships "
+        "requirements.txt. Below 2.7.1 the llms.txt v2 discovery relations "
+        "(rel=alternate/describedby + Link headers), the text/plain Accept "
+        "ramp, and the representation digest are missing. Below 2.7.0 every "
+        "page serves a DUPLICATE H1 to crawlers (the injected prerender "
+        "header plus the doc body's own), the home footer doubles its "
+        "/llms.txt link, and a page that merely MENTIONS the prerender "
+        "marker loses its prerender entirely (the marker-in-comment trap). "
+        "Below 2.6.1 the universal prerender ships "
         "`hidden`; below 2.6.0 sitemap lastmod dates are silently swallowed; "
         "below 2.5.1 configure_seo does not exist and the crawler document "
         "carries no site identity at all.\n"
@@ -412,32 +428,22 @@ app.layout = create_appshell(dash.page_registry.values())
 server = app.server
 
 
-@server.route("/healthz")
-def healthz():
-    """Liveness probe: Render's health check, the hub's hourly sweep, CD's
-    build-match wait and scripts/network_smoke.py all read this.
+# /healthz — Render's health check, the hub's hourly sweep, CD's build-match
+# wait and scripts/network_smoke.py all read this. One payload builder for
+# the whole fleet (lib/health.py), built PER REQUEST rather than closed over
+# at registration: ok (the network-standard field the battery asserts on) +
+# backend + dash_version + build (RENDER_GIT_COMMIT — what cd.yml's
+# build-match wait polls) + app (SATELLITE_APP_KEY via the fork point —
+# which satellite answered is a different question from which commit, on a
+# fleet where hostnames get repointed) and, on dimll >= 2.7.0, the geo
+# diagnostics block. The pre-floor-round inline route also carried `status`
+# and `dash`; nothing consumed either (the battery reads `ok`, cd.yml reads
+# `build`), so they retired with it. Never counted as a visit:
+# lib/analytics_tracker drops /healthz at write time, because Render probes
+# it far more often than anyone reads the docs.
+from lib.health import register_health_route  # noqa: E402
 
-    `ok: true` is the network-standard field — the battery asserts on it, so a
-    host that answers 200 with a body of some other shape reads as unhealthy
-    across the whole fleet. `status` and `dash` are kept because Render's
-    dashboard and the existing runbooks show them.
-
-    `build` is which commit the RUNNING instance was built from
-    (RENDER_GIT_COMMIT). It is what lets CD verify the artifact it shipped
-    rather than whichever build happens to be serving: a bare 200 proves
-    nothing about WHICH build answered (the muicharts finding, 2026-08-21 —
-    its battery had been verifying the previous release on every run,
-    invisibly). Optional on purpose: omitted where the platform variable does
-    not exist, so the fleet's probe contract is unchanged.
-
-    Never counted as a visit: lib/analytics_tracker drops /healthz at write
-    time, because Render probes it far more often than anyone reads the docs.
-    """
-    payload = {"ok": True, "status": "ok", "dash": dash.__version__}
-    build = os.environ.get("RENDER_GIT_COMMIT")
-    if build:
-        payload["build"] = build
-    return payload
+register_health_route(app, "flask")
 
 
 # ============================================================================

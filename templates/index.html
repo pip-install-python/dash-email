@@ -240,8 +240,15 @@
         {%renderer%}
     </footer>
     <noscript>
+        <!-- No <h1> in here, deliberately: crawlers run no JavaScript and
+             PARSE noscript content, so an h1 in this block becomes a second
+             site-wide h1 on every page, competing with each page's own.
+             Found on the llms-2plot-dev fork (2026-08-23, template 3d0645b);
+             the heading below is an h2 for exactly this reason, and the
+             single-h1 sweep in tests/test_pages.py pins it — it caught this
+             very block on its first run here. -->
         <div style="max-width: 640px; margin: 40px auto; font-family: sans-serif;">
-            <h1>dash-email — email components for Dash</h1>
+            <h2>dash-email — email components for Dash</h2>
             <p>
                 15 email-safe Plotly Dash components wrapping React Email
                 patterns, for building, previewing and sending HTML emails from

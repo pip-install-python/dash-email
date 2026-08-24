@@ -30,26 +30,35 @@ python-dotenv>=1.0.0
 mistune>=3.0.0
 # markdown2dash==0.1.2        <- installed --no-deps, see above
 
-# 2.6.1 is the gate-wave floor, load-bearing twice over: below it the
-# universal prerender ships with a literal `hidden` attribute, so every
-# visibility-respecting consumer (html-to-text extractors, plausibly crawler
-# content-weighting) reads "Loading..." instead of the page's prose — the
-# outside-audit finding of 2026-08-22. Below 2.6.0 sitemap <lastmod> is
-# swallowed into **kwargs and silently ignored, so every date the docs
-# frontmatter stamps reverts to invented build dates. 2.5.1 remains the
-# Tier-B SEO standard underneath (configure_seo, tiered corpus documents,
-# per-page title/image_url/schema_type reaching the crawler document); below
+# 2.7.1 is the round-3 fleet floor. 2.7.0 dedups the prerender H1
+# (injected header h1 vs the doc body's own markdown H1 — every page was
+# a duplicate-H1 page to crawlers) and the home footer's doubled
+# /llms.txt link, hardens the idempotency probe (a page MENTIONING the
+# marker no longer disables prerendering — the marker-in-comment trap
+# that blanked this host's every prerender until the gate-wave pass), and
+# ships the geo guardrail + operator panel seams; 2.7.1 adds the llms.txt
+# v2 discovery relations (rel=alternate/describedby on BOTH lanes + Link
+# headers), the Accept: text/plain ramp, and the representation content
+# digest. Underneath: 2.6.1 keeps the universal prerender VISIBLE (below
+# it the block ships a literal `hidden` attribute, so every
+# visibility-respecting consumer reads "Loading..." — the outside-audit
+# finding of 2026-08-22), 2.6.0 keeps sitemap <lastmod> honored instead
+# of swallowed into **kwargs, 2.5.1 remains the Tier-B SEO standard
+# underneath (configure_seo, tiered corpus documents, per-page
+# title/image_url/schema_type reaching the crawler document), and below
 # 2.3.4 `resolve_site_title` does not exist and this site's published
 # identity silently degrades to `app.title`. The same number lives in
-# run.py's boot floor, .github/workflows/ci.yml (twice) and
-# tests/test_config.py — grep the number, don't move one. Floor, not pin:
-# the floor bump IS the Docker cache bust (see the Dockerfile).
-dash-improve-my-llms[flask]>=2.6.1
+# run.py's boot floor, .github/workflows/ci.yml (twice),
+# tests/test_pages.py and scripts/check_release.py — grep the number,
+# don't move one. REMEMBER THE CACHE TRAP: this line changing IS the
+# Docker cache bust; a `>=` floor can never pull a new release through a
+# cache hit (see the Dockerfile).
+dash-improve-my-llms[flask]>=2.7.1
 # This fork is Flask-only (no lib/backend.py), so the other extras are not
 # installed — the commented lines exist because a floor lives in EVERY
 # encoding of it, and a future backend port must not resurrect an old number:
-# dash-improve-my-llms[fastapi]>=2.6.1   # Dash 4.4+ FastAPI backend
-# dash-improve-my-llms[quart]>=2.6.1     # Dash 4.4+ Quart backend
+# dash-improve-my-llms[fastapi]>=2.7.1   # Dash 4.4+ FastAPI backend
+# dash-improve-my-llms[quart]>=2.7.1     # Dash 4.4+ Quart backend
 requests>=2.27.1              # 2plot.dev ad-network client (lib/ad_client.py)
 
 # Clerk authentication (dash-clerk-auth, vendored — not on PyPI).

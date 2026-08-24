@@ -109,13 +109,15 @@ jobs:
               return tuple(int(x) for x in v.split(".")[:3] if x.isdigit())
 
           assert parts(dash.__version__)[:2] >= (4, 1), dash.__version__
-          # 2.6.1 is the gate-wave floor: below it the universal prerender
-          # ships `hidden` (text extractors read "Loading..."), below 2.6.0
-          # sitemap lastmod is silently swallowed, and below 2.3.4
-          # `resolve_site_title` does not exist and this site's published
-          # identity degrades to app.title. Same number as requirements.txt
+          # 2.7.1 is the round-3 fleet floor: 2.7.0 dedups the prerender H1
+          # and the home footer's doubled /llms.txt link and hardens the
+          # idempotency probe (the marker-in-comment trap); 2.7.1 adds the
+          # llms.txt v2 discovery relations, the text/plain Accept ramp and
+          # the representation digest. Underneath, 2.6.1 keeps the prerender
+          # VISIBLE, 2.6.0 keeps sitemap lastmod honored, and 2.3.4 is where
+          # `resolve_site_title` appeared. Same number as requirements.txt
           # and run.py's boot floor — grep it, don't move one.
-          assert parts(pkg.__version__) >= (2, 6, 1), pkg.__version__
+          assert parts(pkg.__version__) >= (2, 7, 1), pkg.__version__
           # 21.x carried two request-smuggling CVEs (CVE-2024-6827,
           # CVE-2024-1135). markdown2dash's spurious <22 pin must not win.
           assert parts(gunicorn.__version__)[:2] >= (23, 0), gunicorn.__version__
@@ -182,7 +184,7 @@ jobs:
 
           v = version('dash-improve-my-llms')
           print('dash-improve-my-llms', v)
-          assert parts(v) >= (2, 6, 1), f'expected >=2.6.1 (visible prerender), image has {v}'
+          assert parts(v) >= (2, 7, 1), f'expected >=2.7.1 (H1 dedup + llms.txt v2 relations), image has {v}'
 
           # The vendored Clerk stack, asserted INSIDE the artifact. The
           # import matters as much as the version: a vendor/ directory that
