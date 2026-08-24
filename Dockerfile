@@ -5,7 +5,7 @@
 # only reads package.json — so `pip install -e .` works without npm.
 # TRADE-OFF: changes under src/lib/components require a local `npm run build`
 # + `npm run extract-meta` and committing the regenerated artifacts.
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 WORKDIR /app
 
