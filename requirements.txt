@@ -1,7 +1,7 @@
 # --- Component library ---
 # The tag is what scripts/compat_matrix.py and .github/workflows/ci.yml strip
 # so each run resolves against the Dash version under test, not this floor.
-dash>=4.1                     # COMPAT-MATRIX: dash
+dash>=4.4.1                     # COMPAT-MATRIX: dash
 
 # --- Documentation site ---
 # 2.8.0, not 2.7.0: on 2.7.0 the network-standard mobile drawer renders as a
