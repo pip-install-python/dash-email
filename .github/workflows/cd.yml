@@ -38,11 +38,11 @@ jobs:
     name: deploy to render
     needs: [test]
     runs-on: ubuntu-latest
-    # Long enough for the build-match wait below (up to 60 × 15s) and no
+    # Long enough for the build-match wait below (up to 100 × 15s) and no
     # longer. Without it the job inherits GitHub's six-hour default, which
     # is how a platform that never comes back healthy holds the
     # `cd-production` concurrency group all day.
-    timeout-minutes: 20
+    timeout-minutes: 30
     environment:
       name: production
       url: https://email.2plot.dev
@@ -55,7 +55,14 @@ jobs:
           HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: |
           if [ -z "$HOOK" ]; then
-            echo "::notice::RENDER_DEPLOY_HOOK_URL is not set. Skipping the deploy trigger and verifying whatever is currently live."
+            # A warning, not a notice: with no hook this workflow TRIGGERS
+            # nothing — the build-match wait below is betting that Render's
+            # own push-triggered autoDeploy fires. When it doesn't (or when
+            # the service is set to deploy only after CI checks pass, which
+            # deadlocks against a wait that runs INSIDE those checks), the
+            # wait times out on a deploy nobody started — the 2.7.1 floor
+            # round failed exactly this way (2026-08-24). Set the secret.
+            echo "::warning::RENDER_DEPLOY_HOOK_URL is not set — this workflow triggered NO deploy. The wait below depends on Render's own autoDeploy firing; if the service gates deploys on CI checks, that wait can never succeed."
             echo "deployed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -78,10 +85,16 @@ jobs:
           # sustained-health wait, with a warning naming what it can't tell
           # — that fallback fires exactly once, on the deploy carrying the
           # field for the first time.
+          # 100 × 15s = 25 min, sized for the WORST build, not the typical
+          # one: a dependency-floor bump busts the Docker cache by design
+          # (the requirements.txt line changing IS the bust), so the deploy
+          # this pipeline most exists to verify is also Render's slowest
+          # full rebuild. The 2.7.1 floor round timed out the old 15-min
+          # window on exactly that deploy (2026-08-24).
           want="${GITHUB_SHA}"
           matched=0
           ok=0
-          for _ in $(seq 1 60); do
+          for _ in $(seq 1 100); do
             body="$(curl -fsS "$SITE_URL/healthz" 2>/dev/null || true)"
             if [ -n "$body" ]; then
               build="$(printf '%s' "$body" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("build",""))' 2>/dev/null || true)"
