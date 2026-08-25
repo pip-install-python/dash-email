@@ -1,5 +1,25 @@
-# Claude Code
-.claude/
+# The .claude/ development kit IS shipped — it is how every fork inherits
+# the network's behavioral contract, skills, and settings (the F1 fabric
+# build, 2026-08-24; the old blanket `.claude/` ignore here kept this
+# repo's project guide local-only for its whole life). Everything else in
+# .claude/ stays local: session scratch, screenshots, settings.local.json
+# (per-seat model overrides), agents, and this repo's .claude/.pypirc — a
+# credential, which the allow-list form keeps uncommittable. Allow-list,
+# not blanket ignore: a dir-level ignore cannot be re-included beneath,
+# hence the /* form.
+.claude/*
+!.claude/CLAUDE.md
+!.claude/settings.json
+!.claude/skills/
+
+# Session working documents are LOCAL BY CONVENTION, network-wide: sync
+# reports, handoffs, and kickoff briefs name hosts, topology, and process.
+# Two public fleet repos were caught tracking theirs (2026-08-24). The
+# X402 rule lived in this clone's .git/info/exclude before this — moved,
+# because a per-clone exclude protects one checkout and no fork.
+X402-SYNC-REPORT.md
+HANDOFF-*.md
+KICKOFF-*.md
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -83,6 +103,18 @@ visitor_analytics.json
 # Created on the first tracked hit, so it appears the moment anyone boots the
 # app locally; it holds no data and belongs to whichever process is running.
 visitor_analytics.json.lock
+# The control board's override store falls back to the app directory when
+# PAGE_VISIBILITY_FILE is unset — running the board locally must never
+# write a real policy file into the checkout (same reason as the
+# analytics ledger above; found on the llms-2plot-dev fork, 1.6.8).
+page_visibility.json
+page_visibility.json.lock
+page_visibility.json.tmp
+# Reporter leases — which worker POSTed the last rollup/presence beat to
+# 2plot.ai. Written next to the analytics store, so a local run drops them
+# into the checkout.
+.satellite_report.lease
+.satellite_presence.lease
 # 2plot.ai traffic ledger (lib/traffic_reporter.py) — local hit log, never committed
 satellite_traffic.jsonl
 satellite_traffic.tmp

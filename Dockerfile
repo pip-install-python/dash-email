@@ -52,6 +52,18 @@ RUN pip install --no-cache-dir --no-deps markdown2dash==0.1.2
 COPY . .
 RUN pip install --no-cache-dir -e .
 
+# Docker's own health verdict — what an orchestrator relying on container
+# health reads, and what CI's "Assert Docker's own health verdict" step
+# polls (a broken probe ships silently while every EXTERNAL curl stays
+# green — emojimart's F2 finding, 2026-08-24). The template probes with
+# curl; this image apt-installs NOTHING (committed JS bundle, no node, no
+# curl — see the header), so the probe is python-urllib instead
+# (clerkhook's shape; recorded in DIVERGENCES.md). Same variable, same
+# default as the CMD bind below: a probe on a hardcoded port goes
+# unhealthy the day the platform moves the bind.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD python -c "import os,urllib.request;urllib.request.urlopen('http://localhost:'+os.environ.get('PORT','8054')+'/healthz',timeout=4)" || exit 1
+
 # Render injects PORT and ignores EXPOSE; env vars (GOOGLE_API_KEY,
 # RESEND_API_KEY) come from render.yaml / the dashboard — NEVER bake .env.
 EXPOSE 8054

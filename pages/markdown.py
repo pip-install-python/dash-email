@@ -250,5 +250,18 @@ for file in files:
         # TypeError — measured on 2.5.1); the floor in run.py guarantees
         # >= 2.6.0, where a real date is emitted and None omits the tag.
         lastmod=metadata.lastmod,
-        llms_doc=_build_llms_doc(metadata.name, metadata.description, expanded, metadata.endpoint),
+        llms_doc=_build_llms_doc(
+            # The PUBLISHED name, not the nav label: a home page named "Home"
+            # would put `# Home` in the preamble while the package injects
+            # the site brand — mismatched H1s the 2.7.0 dedup cannot fold
+            # (leaflet's three-h1 home; F1 pilot finding, 2026-08-24). This
+            # fork's home registers in pages/home.py with its own SITE_BRAND
+            # LLMS_DOC, so no markdown page sits at "/" today — the guard is
+            # here so the day one does, it inherits the fix instead of the
+            # incident.
+            page_visibility.published_name(metadata.endpoint, metadata.name),
+            metadata.description,
+            expanded,
+            metadata.endpoint,
+        ),
     )
