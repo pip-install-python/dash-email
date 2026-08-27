@@ -60,7 +60,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.14"
           cache: pip
       - run: pip install flake8
       - name: flake8
@@ -86,7 +86,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.14"
           cache: pip
 
       - name: Install the docs site
@@ -280,16 +280,32 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The floor, the two intermediate minors, and the current release.
-        dash: ["4.1.0", "4.2.0", "4.3.0", "4.4.1"]
-        python: ["3.12"]
+        # The current release on the fleet Python (sync item 5, template
+        # 1.6.27) — the same minor the Dockerfile's FROM tag declares, which
+        # the old matrix never exercised: main said 3.12 while the image
+        # served whatever pip resolved at build time.
+        # tests/test_python_version.py pins the two together.
+        dash: ["4.4.1"]
+        python: ["3.14"]
         include:
-          # The docs-site Python range, against the current Dash. A full
-          # cross-product would be 12 jobs for very little extra signal.
-          - dash: "4.4.1"
-            python: "3.10"
+          # ...the two adjacent minors keep the compat window three wide on
+          # the current Dash...
           - dash: "4.4.1"
             python: "3.13"
+          - dash: "4.4.1"
+            python: "3.12"
+          # ...and the supported Dash range — the 4.1 floor and the two
+          # intermediate minors — stays on a window leg (3.12), not the
+          # main: each include row varies ONE axis (these vary dash, the
+          # rows above vary python), so a red always names its cause. A
+          # full cross-product would be 12 jobs for very little extra
+          # signal.
+          - dash: "4.1.0"
+            python: "3.12"
+          - dash: "4.2.0"
+            python: "3.12"
+          - dash: "4.3.0"
+            python: "3.12"
     steps:
       - uses: actions/checkout@v4
 
@@ -517,6 +533,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.14"
       - run: pip install pip-audit
       - run: pip-audit -r requirements.txt --skip-editable

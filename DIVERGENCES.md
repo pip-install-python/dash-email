@@ -59,6 +59,32 @@ host); muischeduler's no-npm dependabot scope.
    `${PORT:-8054}`). A verbatim sync would reintroduce an apt layer
    for curl.
 
+4. **scripts/smoke_live.py carries a fork-local network-bulletin check.**
+   The file is the template's current copy (1.6.29 — wake loop, retry
+   ladder, SSL context on both urlopens, head parity) plus one warn-only
+   check in §4: "the network bulletin is wired", asserting the llms.txt
+   viewer's "What's new" panel is not the "No announcements." fallback.
+   Added after this host shipped live with `NETWORK_BULLETIN_URL` unset
+   and nothing anywhere surfaced the empty panel (commit a28dd9b); two
+   fork-owned tests in tests/test_smoke_live.py pin it (unwired warns,
+   wired doesn't). The usage line in the docstring names this host. A
+   byte-copy from the template would silently drop the check; port the
+   template's future changes as contract around it (item 6's class since
+   1.6.29 says exactly this).
+
+5. **scripts/network_smoke.py is the fork-adapted battery, not the
+   template's bytes.** Ours splits `fetch` into `fetch_raw` (bytes) +
+   `fetch` (text) because the social-card real-pixels check reads the
+   PNG IHDR dimensions from raw bytes — a lossy decode destroys the
+   header — and carries the card checks (`social_card_real_pixels`,
+   `installable_as_an_app`) plus a SAMPLE_PAGE constant the template
+   does not have (the file's own header records the lineage: 1.2.4 +
+   leaflet's card checks + the hub's real-pixels shape). Template
+   battery changes port as CONTRACT: the 1.6.27
+   `declared_python_minor`/`python_matches_declared` pair and the SSL
+   context were ported that way, 2026-08-26. A verbatim sync would
+   delete the card checks and break tests/test_network_smoke.py.
+
 ## Byte-owned paths
 
 Paths this fork owns byte-for-byte. The F3b fan-out never overwrites

@@ -92,6 +92,11 @@ def wired(battery, client, monkeypatch):
 
     monkeypatch.setattr(battery, "fetch_raw", fetch_raw)
     monkeypatch.setattr(battery, "_RESULTS", [])
+    # This in-process seat serves on the venv's interpreter, not the image's
+    # — off-contract for `python_matches_declared` by design (same stance as
+    # SMOKE_PYTHON_DECLARED=ignore). Field PRESENCE is still asserted; only
+    # the minor comparison against the Dockerfile stands down.
+    monkeypatch.setattr(battery, "declared_python_minor", lambda: None)
     battery.seen_agents = seen_agents
     return battery
 

@@ -5,7 +5,13 @@
 # only reads package.json — so `pip install -e .` works without npm.
 # TRADE-OFF: changes under src/lib/components require a local `npm run build`
 # + `npm run extract-meta` and committing the regenerated artifacts.
-FROM python:3.12-slim
+# The fleet Python (sync item 5, template 1.6.27): MINOR tag only, never a
+# patch pin — `3.X.Y-slim` stops receiving 3.X fix releases the day it is
+# written down, while the minor tag tracks them through the registry.
+# tests/test_python_version.py holds the CI site lane and cd.yml's verify to
+# this same minor; /healthz's `python` field + the battery's
+# python_matches_declared check hold the serving host to it.
+FROM python:3.14-slim
 
 WORKDIR /app
 

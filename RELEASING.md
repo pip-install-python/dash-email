@@ -77,8 +77,10 @@ has no meaningful mtimes) and flags a bundle older than `src/lib/components`.
 
 Push to `main`. CI runs on every push and PR:
 
-- **`smoke`** — the suite against Dash 4.1.0 / 4.2.0 / 4.3.0 / 4.4.1 on Python
-  3.12, plus 4.4.1 on 3.10 and 3.13 for the docs-site Python range.
+- **`smoke`** — Dash 4.4.1 on the fleet Python 3.14 (the same minor the
+  Dockerfile serves — `tests/test_python_version.py` pins the two together),
+  plus 4.4.1 on the 3.13/3.12 window legs, plus the supported Dash range
+  (4.1.0 / 4.2.0 / 4.3.0) on 3.12.
 - **`package`** — `check_release.py`, `python -m build`, `twine check`, then
   the wheel installed into a clean venv with **only Dash present** and
   imported. That last part is what proves the package does not secretly need
