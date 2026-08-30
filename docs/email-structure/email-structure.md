@@ -4,6 +4,8 @@ description: The root components every email template needs — Email, EmailHead
 endpoint: /components/email-structure
 package: dash_email
 icon: tabler:layout
+category: Components
+order: 1
 lastmod: 2026-07-16
 ---
 

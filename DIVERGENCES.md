@@ -36,17 +36,18 @@ host); muischeduler's no-npm dependabot scope.
    2026-08-24, the 2.7.1 floor round).
 
 2. **cd.yml comment prose is written from this repo's seat** (the
-   2.7.1-round wave-2 keep). The CONTRACT matches the template —
-   build-match wait (`build == GITHUB_SHA`, 100 × 15s, job timeout
-   30m), hookless ::warning, verify gated on both `cancelled` and
-   `skipped` — but the header comment states that hookless
-   autoDeploy is this service's deliberate deploy mechanism (the
-   owner keeps `RENDER_DEPLOY_HOOK_URL` unset), the warning/wait
-   comments tell the 2026-08-24 incident in this repo's words, and
-   the verify comments name the social-card check this fork's
-   smoke_live performs. A verbatim sync would replace the comments
-   with the template's phrasing; port comment-level changes as
-   contract instead.
+   2.7.1-round wave-2 keep). RETIRED 2026-08-29 (sync item 13,
+   1.6.35): the mechanism this entry described — hookless autoDeploy
+   from `main`, the owner deliberately keeping
+   `RENDER_DEPLOY_HOOK_URL` unset — is gone. cd.yml's `deploy` job
+   now promotes a green `main` to `release` with a fast-forward
+   `git push`, and render.yaml watches `release`; there is no hook
+   step and no hook secret to leave unset. What survives from this
+   entry: cd.yml's comment prose is still written from this repo's
+   own seat rather than byte-copied from the template (see the new
+   header comment and the per-step comments) — port template
+   comment-level changes as contract, never as a byte-copy, for the
+   same reason as before.
 
 3. **Dockerfile HEALTHCHECK probes with python-urllib, not curl.**
    This image apt-installs NOTHING — the component bundle is
@@ -84,6 +85,44 @@ host); muischeduler's no-npm dependabot scope.
    `declared_python_minor`/`python_matches_declared` pair and the SSL
    context were ported that way, 2026-08-26. A verbatim sync would
    delete the card checks and break tests/test_network_smoke.py.
+
+6. **No `yaml posture` fence — item 9 (1.6.30) is not adopted here.**
+   Sync item 13 (1.6.35) asks for a `deploy: release-branch` key in
+   this file's `yaml posture` fence; this fork has never carried that
+   fence or its `tests/test_claude_kit.py` shape validator (`_POSTURE_KEYS`
+   does not exist in this tree's kit test). Rather than fabricate a
+   fence with one key and no validation behind it, the release-branch
+   deploy road is recorded here in prose (divergence 2, retired
+   2026-08-29) and in the `.claude/CLAUDE.md` kit trap instead. A
+   verbatim item-13 port would add a fence CI never checks the shape
+   of, which is exactly the silent-decay failure mode item 9 exists to
+   prevent. Adopting item 9 properly (the fence + its validator) is a
+   follow-up drop, not folded into this one.
+
+7. **Item 16's navigation port keeps its own "App" sidebar category and
+   drops one CSS-class pin the template's kwargs table no longer needs
+   here.** `lib.constants.CATEGORY_ORDER` is
+   `["Getting started", "App", "Components", "Templates"]` — "App"
+   (the Email Builder, `pages/email_builder.py`'s
+   `category="App", order=1`) is this fork's own identity category and
+   must not be folded into "Components" per the sync spec's per-fork
+   note; the template itself carries no such category. `UPSTREAM` is
+   declared as React Email only (`https://react.email/docs`) — Resend
+   is a sending integration the Email Builder uses, not something the
+   documented COMPONENTS wrap, so it is not a second declared upstream
+   (a link to Resend still lives on the builder's own page).
+   `tests/test_nav_contract.py::test_code_blocks_cannot_widen_the_page`
+   does NOT assert `table.m2d-block-kwargs` / `.m2d-block-props table`
+   in `assets/main.css`: this repo's installed `markdown2dash` version
+   renders `.. kwargs::` as a plain `dmc.Table` with no such class
+   (`lib/directives/kwargs.py` delegates to the upstream `Kwargs`
+   directive, which sets no `className`), so asserting the class would
+   pin a selector nothing here ever emits. `table.m2d-table` (wide
+   markdown tables) and the List/Blockquote/CodeHighlight overflow
+   rules are ported verbatim. A verbatim template sync would fold
+   Email Builder into "Components", add a second UPSTREAM entry, or
+   reintroduce an untested CSS selector — port template changes to
+   this area as contract, not as bytes.
 
 ## Byte-owned paths
 

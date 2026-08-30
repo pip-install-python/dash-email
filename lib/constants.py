@@ -77,6 +77,80 @@ SAME_AS = [
     "https://pypi.org/project/dash-email/",
 ]
 
+# ---------------------------------------------------------------------------
+# Navigation contract (item 16, ported from the template's 1.6.41) — the
+# parts of the sidebar/top bar that are IDENTICAL on every host come from
+# template code and these constants; this app's own sections (Getting
+# started, App, Components, Templates) come from each page's frontmatter
+# `category:`. A fork edits THIS block and its docs' frontmatter, never
+# components/navbar.py.
+#
+# PER-FORK IDENTITY: dash-email keeps "App" (the Email Builder) as its own
+# top-level sidebar category rather than folding it into "Components" — the
+# builder is this site's showcase application, not a documented component.
+# ---------------------------------------------------------------------------
+
+# The app's own sections, in sidebar order. Every docs page declares
+# `category:` in its frontmatter (pages/email_builder.py declares its own
+# category= directly at register_page, since it has no frontmatter file);
+# categories not listed here follow the listed ones, alphabetically.
+CATEGORY_ORDER = [
+    "Getting started",
+    "App",
+    "Components",
+    "Templates",
+]
+
+# Network-wide community links — identical on every host.
+DISCORD_URL = "https://discord.gg/e5s5uHWUHH"
+YOUTUBE_URL = "https://www.youtube.com/@2plotai"
+YOUTUBE_SUBSCRIBE_URL = YOUTUBE_URL + "?sub_confirmation=1"
+DMC_URL = "https://www.dash-mantine-components.com/"
+
+# The upstream project this component library wraps. Rendered as the last
+# Resources link (lib.constants.resources()). dash-email wraps React Email;
+# Resend (the transactional-send API the Email Builder sends through) is
+# deliberately NOT declared a second upstream here — this constant is
+# singular in the template's contract, and React Email is what the
+# COMPONENTS document (Resend is a sending integration used by the builder,
+# not something dash-email's components wrap). A link to Resend still lives
+# on the Email Builder's own page.
+UPSTREAM = {"name": "React Email", "url": "https://react.email/docs",
+            "icon": "simple-icons:react"}
+
+# Dash component packages whose props the generated /api page documents.
+# The version badge in the header reads the first entry's __version__.
+API_PACKAGES: list = ["dash_email"]
+
+# The owner's profile — the FOOTER's GitHub link (the repo is the top bar's).
+GITHUB_PROFILE_URL = "https://github.com/pip-install-python"
+
+# The header's mark (1.6.41 shape): the asset under assets/, its box, the
+# wordmark colour, and the breakpoint the wordmark text appears from. Kept
+# here rather than hardcoded in components/header.py so a fork edits one
+# place for its whole header identity.
+WORDMARK = "dash-email"
+LOGO_ASSET = "email-logo.png"
+LOGO_STYLE = {"height": "32px", "width": "32px"}
+WORDMARK_COLOR = "#228be6"
+WORDMARK_VISIBLE_FROM = "xs"
+
+
+def resources() -> list:
+    """The sidebar's Resources section: THIRD-PARTY ONLY. `dmc` and the
+    declared upstream (React Email). The owner's own links (repo, Discord,
+    YouTube) live in the top bar and the footer, never here; no
+    community.plotly.com; no 2plot.dev (the network is the Other Apps
+    menu)."""
+    items = [
+        {"label": "dmc", "url": DMC_URL, "icon": "ic:baseline-design-services"},
+    ]
+    if UPSTREAM:
+        items.append({"label": UPSTREAM["name"], "url": UPSTREAM["url"],
+                      "icon": UPSTREAM.get("icon", "mdi:open-in-new")})
+    return items
+
+
 # Height of the fixed AppShell header, in px. Consumed by AppShell(header=...)
 # and by the mobile drawer, which docks itself directly below the header.
 # Change it here only — the two must never drift apart.

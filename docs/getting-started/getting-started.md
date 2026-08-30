@@ -4,6 +4,8 @@ description: Install dash-email and build your first email template in minutes.
 endpoint: /getting-started
 package: dash_email
 icon: tabler:rocket
+category: Getting started
+order: 1
 lastmod: 2026-07-16
 ---
 

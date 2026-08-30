@@ -1,0 +1,522 @@
+"""The navigation contract (item 16, ported from the template's 1.6.41) —
+uniform where it must be, free where it may.
+
+The sidebar's sections come from frontmatter against CATEGORY_ORDER; the
+network is ONE registry rendered as the top bar's Other Apps menu; Resources
+is one constant; Admin is owner-only and absent from the tree otherwise;
+every icon-only control has a name; no `dcc.*` where DMC has the component.
+
+Adapted from the template's tests/test_nav_contract.py for this fork's shape:
+this app keeps its own "App" sidebar category (the Email Builder) rather than
+the template's "Documentation" catch-all, and its `.. kwargs::` prop tables
+are rendered by an older markdown2dash that stamps no `m2d-block-kwargs` /
+`m2d-block-props` class — those two template-only CSS pins are dropped here
+because they would assert on a class this fork's own build never emits, not
+because the underlying scroll-safety property is unmet (m2d-table already
+covers the wide-table case, and List/Blockquote/CodeHighlight code-block
+overflow is ported verbatim below).
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+
+import pytest
+
+REPO = Path(__file__).resolve().parent.parent
+ALLOWED_DCC = {"Location", "Store", "Interval", "Upload", "Graph"}
+
+
+def _calls(src: str, name: str):
+    """Yield the source text of every `name(` call, parens balanced."""
+    for m in re.finditer(re.escape(name) + r"\(", src):
+        depth, i = 0, m.start()
+        while i < len(src):
+            if src[i] == "(":
+                depth += 1
+            elif src[i] == ")":
+                depth -= 1
+                if depth == 0:
+                    yield src[m.start():i + 1]
+                    break
+            i += 1
+
+
+# ------------------------------------------------------------- a11y --
+
+
+@pytest.mark.parametrize("control", ["dmc.Burger", "dmc.ActionIcon"])
+def test_every_icon_only_control_in_components_has_a_name(control):
+    """Every Burger/ActionIcon in components/ carries aria-label."""
+    unlabelled = []
+    for path in sorted((REPO / "components").glob("*.py")):
+        for call in _calls(path.read_text(), control):
+            if "aria-label" not in call:
+                unlabelled.append(f"{path.name}: {call[:60]}…")
+    assert unlabelled == [], unlabelled
+
+
+def test_code_highlight_copy_button_has_a_name():
+    src = (REPO / "lib" / "directives" / "source.py").read_text()
+    assert "copyLabel=" in src and "copiedLabel=" in src
+
+
+def test_no_dcc_where_dmc_has_the_component():
+    """`dcc.` only for Location, Store, Interval, Upload, Graph (no DMC
+    equivalent). email_builder.py's dcc.Store/dcc.Upload usage is legitimate
+    (file uploads, client-side generated-code caches)."""
+    offenders = []
+    for folder in ("pages", "components"):
+        for path in sorted((REPO / folder).glob("*.py")):
+            code = "\n".join(line for line in path.read_text().splitlines()
+                             if not line.lstrip().startswith("#"))
+            for m in re.finditer(r"\bdcc\.([A-Za-z]+)", code):
+                if m.group(1) not in ALLOWED_DCC:
+                    offenders.append(f"{folder}/{path.name}: dcc.{m.group(1)}")
+    assert offenders == [], offenders
+
+
+def test_the_traffic_page_uses_a_date_picker_not_a_dropdown():
+    src = (REPO / "pages" / "traffic.py").read_text()
+    assert "dcc.Dropdown" not in src
+    assert "dmc.DatePickerInput" in src and 'valueFormat="YYYY-MM-DD"' in src
+    assert "presets=" in src and "minDate=" in src and "maxDate=" in src
+
+
+# --------------------------------------------------------- registry --
+
+
+def test_other_apps_menu_is_the_registrys_primary_set(app_module):
+    """The PRIMARY applications only — never the docs subdomains — from the
+    registry, no duplicates, self omitted, short labels (the domain)."""
+    from components.header import create_other_apps_menu
+    from lib.constants import BASE_URL
+    from lib.network_directory import AFFILIATED, PEERS, PRIMARY, other_apps_for
+
+    menu = create_other_apps_menu()
+    items = menu.children[1].children
+    hrefs = [i.href for i in items]
+    expected = [e["url"] for e in other_apps_for(BASE_URL)]
+    assert hrefs == expected
+    assert set(h.rstrip("/") for h in hrefs) == PRIMARY - {BASE_URL.rstrip("/")}
+    assert {"https://2plot.ai", "https://2plot.dev", "https://2plot.media",
+            "https://piratesbargain.com", "https://ai-agent.buzz"} == set(PRIMARY)
+    assert PRIMARY <= {e["url"].rstrip("/") for e in PEERS + AFFILIATED}, "PRIMARY names a URL the registry lacks"
+    assert not any(".2plot.dev" in h for h in hrefs), "a docs subdomain leaked into the menu"
+    assert len(set(hrefs)) == len(hrefs), "a host is listed twice"
+    for item in items:
+        label = item.children
+        assert "." in label and " " not in label and "—" not in label, label
+        assert item.target == "_blank"
+
+
+def test_resources_are_third_party_only():
+    """The sidebar's Resources holds dmc and the upstream project only; the
+    owner's own links are top bar + footer."""
+    from lib import constants
+    from lib.constants import DISCORD_URL, GITHUB_PROFILE_URL, GITHUB_URL, YOUTUBE_URL, resources
+
+    items = resources()
+    assert items[0]["label"] == "dmc" and items[0]["url"] == "https://www.dash-mantine-components.com/"
+    urls = [r["url"] for r in items]
+    for banned in (GITHUB_URL, GITHUB_PROFILE_URL, DISCORD_URL, YOUTUBE_URL,
+                   "pip-install-python", "discord.gg", "youtube.com",
+                   "community.plotly.com", "https://2plot.dev"):
+        assert not any(banned in u for u in urls), banned
+    if constants.UPSTREAM:
+        assert urls[-1] == constants.UPSTREAM["url"]
+
+
+def test_github_icon_and_same_as_share_one_constant(app_module):
+    from components.header import create_header
+    from lib.constants import GITHUB_URL, SAME_AS
+
+    assert GITHUB_URL in SAME_AS
+    assert GITHUB_URL.startswith("https://github.com/pip-install-python/")
+    assert GITHUB_URL.count("/") == 4, "the REPOSITORY, not the profile"
+    assert GITHUB_URL in str(create_header([]))
+
+
+# ---------------------------------------------------------- sidebar --
+
+
+def test_sections_follow_category_order_and_never_hold_admin(app_module):
+    import dash
+
+    from components.navbar import sections_for
+    from lib.constants import CATEGORY_ORDER
+
+    data = list(dash.page_registry.values())
+    sections = sections_for(data)
+    titles = [t for t, _ in sections]
+    known = [t for t in titles if t in CATEGORY_ORDER]
+    assert known == [c for c in CATEGORY_ORDER if c in titles], titles
+    for _, entries in sections:
+        assert not any(e["path"].startswith("/admin/") for e in entries)
+        assert not any(e["path"] in ("/", "/changelog", "/api") for e in entries)
+    # every docs page and the Email Builder declare a category
+    assert "Documentation" not in titles, "a page lost its category: frontmatter"
+    # this fork's identity: the Email Builder keeps its own "App" section
+    assert "App" in titles
+
+
+def test_email_builder_keeps_its_own_app_category(app_module):
+    """PER-FORK IDENTITY (item 16): the builder is dash-email's showcase
+    application, not a documented component — it must not be folded into
+    "Components"."""
+    import dash
+
+    from components.navbar import sections_for
+
+    data = list(dash.page_registry.values())
+    sections = dict(sections_for(data))
+    app_paths = [e["path"] for e in sections.get("App", [])]
+    assert "/email-builder" in app_paths
+    components_paths = [e["path"] for e in sections.get("Components", [])]
+    assert "/email-builder" not in components_paths
+
+
+def test_frontmatter_order_sorts_within_a_section(app_module):
+    import dash
+
+    from components.navbar import sections_for
+
+    for title, entries in sections_for(dash.page_registry.values()):
+        orders = [int(e.get("order") or 1000) for e in entries]
+        assert orders == sorted(orders), (title, orders)
+
+
+def test_anonymous_tree_has_no_admin_href(app_module, monkeypatch):
+    """Hidden, not blocked. The startup tree carries only an empty Admin
+    placeholder; the callback returns nothing to a non-admin."""
+    import dash
+
+    from components.navbar import create_content, render_admin_section
+
+    tree = str(create_content(dash.page_registry.values()))
+    assert "/admin/" not in tree
+    assert "navbar-admin-desktop" in tree
+    monkeypatch.delenv("ALLOW_UNGATED_ADMIN", raising=False)
+    assert render_admin_section("navbar-admin-desktop") == (None, None)
+
+
+def test_admin_tree_lists_every_admin_page(app_module, monkeypatch):
+    from components.navbar import render_admin_section
+
+    monkeypatch.setenv("ALLOW_UNGATED_ADMIN", "1")
+    desktop, mobile = render_admin_section("navbar-admin-desktop")
+    text = str(desktop)
+    assert "/admin/control-board" in text and "/admin/traffic" in text
+    assert str(mobile) == text
+
+
+def test_search_lists_only_sidebar_pages(app_module):
+    import dash
+
+    from components.navbar import search_data
+
+    values = [d["value"] for d in search_data(dash.page_registry.values())]
+    assert values and not any(v.startswith("/admin/") for v in values)
+    assert "/" not in values and "/changelog" not in values
+
+
+# ---------------------------------------------------------- footer --
+
+
+def test_footer_is_the_contract(app_module):
+    from datetime import datetime
+
+    from components.footer import create_footer
+    from lib.constants import DISCORD_URL, GITHUB_PROFILE_URL, GITHUB_URL, YOUTUBE_SUBSCRIBE_URL
+
+    text = str(create_footer())
+    assert f"© {datetime.now().year} Pip Install Python LLC" in text
+    for href in (GITHUB_PROFILE_URL, DISCORD_URL, YOUTUBE_SUBSCRIBE_URL):
+        assert href in text
+    assert GITHUB_URL not in text, "the repo link is the top bar's; the footer links the profile"
+    assert "/changelog" not in text, "the sidebar's single Changelog link is the one"
+    assert "/terms" not in text and "/privacy" not in text
+
+
+# ------------------------------------------------------- changelog --
+
+
+def test_changelog_page_is_the_file(app_module, client):
+    from pages.changelog import parse_changelog
+
+    versions = parse_changelog()
+    newest = re.search(r"^## \[([^\]]+)\]", (REPO / "CHANGELOG.md").read_text(), re.M).group(1)
+    assert versions and versions[0]["version"] == newest
+    doc = client.get("/changelog/llms.txt", user_agent="Mozilla/5.0 (compatible; Googlebot/2.1)")
+    assert doc.status == 200
+    assert doc.text.startswith("# Changelog") and "\n# Changelog" not in doc.text, "the file's H1 was not deduplicated"
+    assert f"## [{newest}]" in doc.text
+    page = client.get("/changelog", user_agent="Mozilla/5.0 (compatible; Googlebot/2.1)")
+    assert page.status == 200 and newest in page.text
+
+
+# ------------------------------------------------------------- api --
+
+
+def test_api_reference_reads_a_dash_package_metadata():
+    from lib import api_reference
+
+    comps = api_reference.load_package("tests.fixtures.fake_dash_pkg")
+    names = [c["name"] for c in comps]
+    assert names == ["FakeGauge", "FakeWidget"], "sorted, exported only"
+    widget = comps[1]
+    props = {p["name"]: p for p in widget["props"]}
+    assert "setProps" not in props
+    assert props["value"]["required"] and props["value"]["default"] == "0"
+    assert props["variant"]["type"].startswith("one of ")
+    assert widget["props"][0]["name"] == "id"
+    md = api_reference.as_markdown(["tests.fixtures.fake_dash_pkg"])
+    assert "| `value` * | number | 0 | Current value. |" in md
+
+
+def test_api_page_renders_one_table_per_component():
+    from pages.api import build_page
+
+    text = str(build_page(["tests.fixtures.fake_dash_pkg"]))
+    assert "api-table-FakeWidget" in text and "api-table-FakeGauge" in text
+    assert "Current value." in text
+
+
+def test_api_page_follows_api_packages(app_module):
+    """A host that declares API_PACKAGES has /api registered, in the
+    sidebar, with components read from the package's metadata.json; a host
+    that declares none has no /api at all. dash-email declares
+    ["dash_email"], so /api IS registered — the opposite branch of the
+    template's own (empty-API_PACKAGES) fixture."""
+    import dash
+
+    from components.navbar import _has_api_page
+    from lib import api_reference
+    from lib.constants import API_PACKAGES
+
+    paths = [p["path"] for p in dash.page_registry.values()]
+    assert API_PACKAGES == ["dash_email"]
+    assert "/api" in paths
+    assert _has_api_page(dash.page_registry.values())
+    for pkg in api_reference.load_packages(API_PACKAGES):
+        assert not pkg.get("error"), pkg
+        assert pkg["components"], f"{pkg['package']} exposes no components"
+
+
+def test_missing_package_is_reported_not_raised():
+    from lib import api_reference
+
+    out = api_reference.load_packages(["no_such_dash_package_xyz"])
+    assert out[0]["components"] == [] and "error" in out[0]
+
+
+# ------------------------------------------------ visual-pass items --
+
+
+def test_the_aside_collapses_on_pages_without_a_toc(app_module):
+    """/changelog and the admin pages are full width. Docs pages with
+    `.. toc::` keep the column; everything else collapses it."""
+    from lib.aside import ASIDE_PATHS, aside_config, has_aside
+
+    toc_pages = sorted(ASIDE_PATHS)
+    assert toc_pages, "no docs page registered an aside — is `.. toc::` gone?"
+    assert all(has_aside(p) for p in toc_pages)
+    for path in ("/changelog", "/admin/traffic", "/admin/control-board"):
+        assert not has_aside(path), path
+        assert aside_config(path)["collapsed"]["desktop"] is True
+    assert aside_config(toc_pages[0])["collapsed"]["desktop"] is False
+    assert aside_config(None)["collapsed"]["mobile"] is True
+
+
+def test_the_mobile_drawer_is_always_mounted(app_module):
+    """The burger must not depend on a mount-on-open transition, and
+    #navbar-admin-mobile must exist on every load."""
+    from components.navbar import create_navbar_drawer
+
+    drawer = create_navbar_drawer([])
+    assert drawer.keepMounted is True
+    assert "navbar-admin-mobile" in str(drawer)
+
+
+def test_code_blocks_cannot_widen_the_page():
+    """The overflow rule lives in the stylesheet, for every container a code
+    block can sit in — never a per-page fix. `table.m2d-block-kwargs` /
+    `.m2d-block-props table` are NOT asserted here: this fork's installed
+    markdown2dash renders `.. kwargs::` as a plain dmc.Table with no such
+    class (see module docstring); m2d-table already covers wide tables."""
+    css = (REPO / "assets" / "main.css").read_text()
+    for selector in (".mantine-List-itemWrapper", ".mantine-List-itemLabel",
+                     ".mantine-Timeline-itemBody", ".mantine-CodeHighlight-root",
+                     ".mantine-CodeHighlightTabs-root", ".mantine-AppShell-main pre",
+                     "code.m2d-codespan"):
+        assert selector in css, selector
+    # and the changelog's rows let an unbreakable code token wrap
+    src = (REPO / "pages" / "changelog.py").read_text()
+    assert '"overflowWrap": "anywhere"' in src and '"minWidth": 0' in src
+    wrappers = css[css.index(".mantine-List-itemWrapper"):]
+    assert "min-width: 0" in wrappers[:400]
+    pre_rule = css[css.index(".mantine-AppShell-main pre"):]
+    assert "overflow-x: auto" in pre_rule[:200]
+    assert "overflow-wrap: anywhere" in css[css.index("code.m2d-codespan"):][:200]
+
+
+def test_other_apps_dropdown_is_solid_and_every_primary_app_has_an_icon(app_module):
+    from components.header import create_other_apps_menu
+    from lib.network_directory import ICONS, PRIMARY
+
+    dropdown = create_other_apps_menu().children[1]
+    assert dropdown.styles["dropdown"]["backgroundColor"]
+    for url in PRIMARY:
+        assert ICONS.get(url) not in (None, "mdi:web"), f"{url} has no icon"
+
+
+def test_the_skip_link_is_the_first_tab_stop(app_module):
+    """"Skip to content" → #main-content, first in the tree, visible only
+    on focus (.skip-link in main.css)."""
+    from components.appshell import create_appshell
+
+    shell = create_appshell([])
+    first = shell.children[0]
+    assert getattr(first, "href", None) == "#main-content" and first.className == "skip-link"
+    assert 'id="main-content"' in str(shell).replace("'", '"') or "main-content" in str(shell)
+    css = (REPO / "assets" / "main.css").read_text()
+    assert ".skip-link:focus" in css and "left: -9999px" in css
+
+
+def test_an_upstream_on_github_is_allowed_in_resources(monkeypatch):
+    from lib import constants
+
+    monkeypatch.setattr(constants, "UPSTREAM", {"name": "Excalidraw", "url": "https://github.com/excalidraw/excalidraw"})
+    urls = [r["url"] for r in constants.resources()]
+    assert urls[-1] == "https://github.com/excalidraw/excalidraw"
+    assert not any("pip-install-python" in u for u in urls)
+
+
+def test_changelog_headings_accept_every_dash(tmp_path):
+    from pages.changelog import newest_date, parse_changelog
+
+    p = tmp_path / "CHANGELOG.md"
+    p.write_text("# Changelog\n\n## [2.0.0] — 2026-08-30\n\n### Added\n- em dash\n\n"
+                 "## [1.9.0] – 2026-08-29\n\n### Fixed\n- en dash\n\n## [1.8.0] - 2026-08-28\n\n### Added\n- hyphen\n")
+    versions = parse_changelog(p)
+    assert [v["date"] for v in versions] == ["2026-08-30", "2026-08-29", "2026-08-28"]
+    assert newest_date(p) == "2026-08-30"
+
+
+def test_locked_pages_are_marked_in_the_sidebar(app_module, monkeypatch):
+    """An auth-tier page shows a lock and a Tooltip ("Sign in required") —
+    never `title=`, which DMC 2.8 rejects."""
+    import dash_mantine_components as dmc
+
+    from components import navbar
+    from lib import page_tiers
+
+    monkeypatch.setattr(navbar, "page_tier", lambda p: "auth" if p == "/locked" else "public")
+    locked = navbar._page_link({"path": "/locked", "name": "Locked", "icon": None})
+    assert isinstance(locked, dmc.Tooltip) and locked.label == "Sign in required"
+    assert "fluent:lock-closed-16-regular" in str(locked)
+    public = navbar._page_link({"path": "/open", "name": "Open", "icon": None})
+    assert isinstance(public, dmc.Anchor)
+    assert page_tiers.local_tier("/getting-started") in ("public", "auth", "admin", "hidden")
+
+
+def test_api_reference_falls_back_to_the_committed_extract_then_docstrings(tmp_path, monkeypatch):
+    """metadata.json → api_metadata.json (committed, stamped) → docstrings
+    (hook-based packages ship no metadata at all)."""
+    import sys
+
+    from lib import api_reference
+
+    comps = api_reference.load_package("tests.fixtures.docstring_dash_pkg")
+    assert [c["name"] for c in comps] == ["DocWidget"]
+    props = {p["name"]: p for p in comps[0]["props"]}
+    assert props["value"]["required"] and props["size"]["default"] == "'md'"
+    assert props["id"]["description"].startswith("The ID")
+    assert "setProps" not in props
+    pkg_dir = tmp_path / "slim_pkg"
+    pkg_dir.mkdir()
+    (pkg_dir / "__init__.py").write_text("class Only:\n    pass\n")
+    (pkg_dir / api_reference.SLIM_METADATA).write_text(json.dumps({"generated": "2026-08-30", "components": [
+        {"name": "Only", "description": "d", "props": [{"name": "id", "type": "string", "required": False, "default": "", "description": "x"}]}]}))
+    monkeypatch.syspath_prepend(str(tmp_path))
+    sys.modules.pop("slim_pkg", None)
+    assert api_reference.load_package("slim_pkg")[0]["name"] == "Only"
+    assert api_reference.slim_generated_on("slim_pkg") == "2026-08-30"
+    assert api_reference.slim_generated_on("tests.fixtures.fake_dash_pkg") is None
+
+
+def test_api_markdown_escapes_pipes_in_every_cell():
+    from lib import api_reference
+
+    rows = [{"package": "x", "components": [{"name": "C", "description": "", "props": [
+        {"name": "a|b", "type": "a | b", "required": False, "default": "x|y", "description": "d|e\nf"}]}]}]
+    import unittest.mock as um
+    with um.patch.object(api_reference, "load_packages", return_value=rows):
+        md = api_reference.as_markdown(["x"])
+    assert "| `a\\|b` | a \\| b | x\\|y | d\\|e f |" in md
+
+
+def test_generated_pages_carry_the_full_machine_record(app_module, client):
+    """/changelog and /api register the full record — visibility, tier,
+    lastmod — not just a module LLMS_DOC."""
+    import re as _re
+
+    from lib import page_tiers, page_visibility
+    from pages.changelog import newest_date
+
+    assert page_tiers.local_tier("/changelog") == "public"
+    assert "/changelog" in page_visibility.controllable_pages()
+    sitemap = client.get("/sitemap.xml").text
+    m = _re.search(r"<url>\s*<loc>[^<]*/changelog</loc>\s*<lastmod>([^<]+)</lastmod>", sitemap)
+    assert m and m.group(1).startswith(newest_date()), sitemap[:400]
+
+
+def test_nav_short_label_is_used_in_sidebar_and_search():
+    """frontmatter `nav:` is the sidebar and search label; `name:` stays the
+    <title> / og:title / llms.txt heading."""
+    from components.navbar import _page_link, search_data
+
+    entry = {"path": "/very-long", "name": "A Very Long Page Name Indeed", "nav": "Long page", "icon": None}
+    assert "Long page" in str(_page_link(entry)) and "Indeed" not in str(_page_link(entry))
+    assert search_data([entry]) == [{"label": "Long page", "value": "/very-long"}]
+    plain = {"path": "/p", "name": "Plain", "icon": None}
+    assert search_data([plain]) == [{"label": "Plain", "value": "/p"}]
+
+
+def test_changelog_parser_takes_prose_first_and_bare_versions(tmp_path):
+    """`## 2.0.0 — date` with paragraphs and no ### sections rendered eight
+    empty headings before 1.6.41. Bare or bracketed version, any dash,
+    prose as `para` items."""
+    from pages.changelog import parse_changelog
+
+    p = tmp_path / "CHANGELOG.md"
+    p.write_text("# Changelog\n\n## 2.0.0 — 2026-08-02\n\nFirst paragraph of prose\nthat wraps.\n\nSecond paragraph.\n\n"
+                 "## [1.0.0] - 2026-01-01\n\n### Added\n- a bullet\n")
+    v = parse_changelog(p)
+    assert [x["version"] for x in v] == ["2.0.0", "1.0.0"]
+    assert v[0]["date"] == "2026-08-02"
+    paras = [i["text"] for i in v[0]["sections"]["Notes"] if i["type"] == "para"]
+    assert paras == ["First paragraph of prose that wraps.", "Second paragraph."]
+    assert v[1]["sections"]["Added"][0] == {"type": "item", "text": "a bullet"}
+
+
+def test_generated_api_yields_to_a_docs_page_that_owns_the_path(tmp_path, monkeypatch):
+    from pages import api as api_page
+
+    docs = tmp_path / "docs" / "x"
+    docs.mkdir(parents=True)
+    (docs / "api.md").write_text("---\nname: API\nendpoint: /api\n---\n\nprose\n")
+    monkeypatch.chdir(tmp_path)
+    assert api_page._docs_page_owns("/api") is True
+    assert api_page._docs_page_owns("/nope") is False
+
+
+def test_header_reads_header_height(app_module):
+    from components.header import create_header
+    from lib.constants import HEADER_HEIGHT
+
+    src = (REPO / "components" / "header.py").read_text()
+    assert "h=HEADER_HEIGHT" in src and "h=70" not in src
+    assert f"h={HEADER_HEIGHT}" in str(create_header([]))

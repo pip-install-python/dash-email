@@ -172,3 +172,30 @@ they win.
   the same sha — key on the workflow path (cd.yml) instead.
 - The browser lane and the machine lane are different documents;
   a fix proven on one is unproven on the other.
+- `build == HEAD` on `/healthz` means HEAD of **`release`**, not main
+  (sync item 13, 1.6.35). Render deploys `release`; only cd.yml's
+  `deploy` job writes it, fast-forward, after the CI matrix is green.
+  `main` ahead of `release` is an uncertified push pending — its CD
+  run is red or still running — never "drift" and never a reason to
+  deploy by hand or to write `release` yourself (a non-fast-forward
+  push fails the next run on purpose). Compare the wire against
+  `git rev-parse origin/release`. This fork has no DIVERGENCES.md
+  posture fence (item 9, 1.6.30, is not adopted here) — the trap
+  above is unconditional until that fence exists; a fork whose fence
+  has no `deploy:` key still watches main, and there the old trap
+  applies instead.
+- There is ONE classifier: `dash_improve_my_llms.classify()`. Never
+  add a User-Agent list to this app — the tracker had one for a year
+  (`lib/analytics_tracker.py`, until sync item 12), it filed ClaudeBot
+  as *search* (it is Anthropic's training crawler; the package's
+  registry says so), it still named the retired `anthropic-ai` /
+  `claude-web` tokens, and it counted every UA-less or library client
+  as a human. A token the registry lacks is a pushback to the package
+  seat, not a list here; `tests/test_analytics_classifier.py` greps
+  the module for the old tokens and goes red if one comes back.
+- Item 16's kwargs-table CSS class (`table.m2d-block-kwargs` /
+  `.m2d-block-props table`) does not apply to this fork —
+  `lib/directives/kwargs.py` delegates to an older `markdown2dash`
+  `Kwargs` directive that stamps no class on its `dmc.Table`. Don't
+  let a future sync "restore" that selector into `assets/main.css`
+  or its test assertion; see DIVERGENCES.md entry 7.

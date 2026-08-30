@@ -4,6 +4,8 @@ description: Center content at email-safe widths and group it into sections.
 endpoint: /components/container-section
 package: dash_email
 icon: tabler:box-margin
+category: Components
+order: 2
 lastmod: 2026-07-16
 ---
 

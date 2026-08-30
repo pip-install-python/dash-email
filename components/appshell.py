@@ -1,8 +1,10 @@
 import dash_mantine_components as dmc
-from dash import Output, Input, clientside_callback, dcc, page_container, State
+from dash import Output, Input, callback, clientside_callback, dcc, html, page_container, State
 
+from components.footer import FOOTER_HEIGHT, create_footer
 from components.header import create_header
 from components.navbar import create_navbar, create_navbar_drawer
+from lib.aside import aside_config
 from lib.constants import PRIMARY_COLOR, HEADER_HEIGHT
 
 
@@ -168,6 +170,10 @@ def create_appshell(data):
             },
         },
         children=[
+            # a11y (1.6.41, adopted from muischeduler): the first tab stop
+            # jumps past the sidebar's stops straight to the page content;
+            # visible only on keyboard focus — .skip-link in assets/main.css.
+            html.A("Skip to content", href="#main-content", className="skip-link"),
             dcc.Location(id="url", refresh="callback-nav"),
             dcc.Store(id="color-scheme-storage", storage_type="local"),
             # Persists the desktop-navbar collapse state across reloads.
@@ -181,22 +187,23 @@ def create_appshell(data):
                     create_navbar_drawer(data),
                     dmc.AppShellMain(
                         children=page_container,
-                        style={"minHeight": f"calc(100dvh - {HEADER_HEIGHT}px)"}  # Full height minus header
+                        id="main-content",   # the skip link's target
+                        style={"minHeight": f"calc(100dvh - {HEADER_HEIGHT + FOOTER_HEIGHT}px)"}
                     ),
+                    create_footer(),
                 ],
                 id="m2d-appshell",
                 header={"height": HEADER_HEIGHT},
+                footer={"height": FOOTER_HEIGHT},
                 padding="xl",
                 navbar={
                     "width": 280,
                     "breakpoint": "md",  # Collapse on medium screens and below
                     "collapsed": {"mobile": True},
                 },
-                aside={
-                    "width": 280,
-                    "breakpoint": "xl",
-                    "collapsed": {"desktop": False, "mobile": True},
-                },
+                # Collapsed wherever the page renders no TOC — the callback
+                # below re-evaluates it per navigation (lib/aside.py).
+                aside=aside_config("/"),
                 withBorder=True,
             ),
         ],
@@ -307,3 +314,13 @@ clientside_callback(
     Input("url", "pathname"),
     State("desktop-navbar-collapsed", "data"),
 )
+
+
+@callback(
+    Output("m2d-appshell", "aside"),
+    Input("url", "pathname"),
+)
+def _collapse_aside_without_toc(pathname):
+    """Full width for pages that render no aside (1.6.39): /changelog, /api,
+    home, the admin pages. The docs pages keep their TOC column."""
+    return aside_config(pathname)

@@ -20,6 +20,13 @@ from utils.showcase_templates import SHOWCASE_TYPES
 # not given (dash/_pages.py). An empty og:image renders a blank share card,
 # which is worse than no tag at all — and `title` is what becomes `og:title`,
 # so without the prefix this page's unfurl named no site.
+# category="App" is this fork's per-fork identity (item 16's PER-FORK
+# IDENTITY note): the builder is dash-email's showcase application, not a
+# documented component, so it gets its own top-level sidebar section rather
+# than folding into "Components". order=1 — it is the only page in the
+# section. This page has no frontmatter file (it isn't Markdown), so the
+# category/order/icon that pages/markdown.py normally reads from a doc's
+# frontmatter are declared directly here instead.
 dash.register_page(
     __name__,
     path="/email-builder",
@@ -31,6 +38,9 @@ dash.register_page(
         "Resend."
     ),
     image_url=OG_IMAGE_URL,
+    category="App",
+    icon="tabler:mail-plus",
+    order=1,
 )
 
 # Without a Gemini key the builder still works, serving curated example

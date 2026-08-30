@@ -30,17 +30,26 @@ python-dotenv>=1.0.0
 mistune>=3.0.0
 # markdown2dash==0.1.2        <- installed --no-deps, see above
 
-# 2.7.1 is the round-3 fleet floor. 2.7.0 dedups the prerender H1
-# (injected header h1 vs the doc body's own markdown H1 — every page was
-# a duplicate-H1 page to crawlers) and the home footer's doubled
+# 2.8.0 is the ledger floor (item 12, the ledger row): ONE classifier —
+# `classify()` is the registry robots.txt is rendered from, and
+# lib/analytics_tracker delegates to it instead of carrying a fourth UA
+# list that filed ClaudeBot (Anthropic's TRAINING crawler) as "search";
+# the READ EVENT — `on_document_read` hands the app one row per corpus
+# document served (tier, verdict, bytes, verified vendor), which the
+# tracker keeps as the ledger's `reads` table next to `visits`; and
+# verified vendor identity (`verified` is `n/a` where the operator
+# publishes no ranges — Anthropic does not, so ClaudeBot is always n/a).
+# Underneath: 2.7.1 is the round-3 fleet floor. 2.7.0 dedups the prerender
+# H1 (injected header h1 vs the doc body's own markdown H1 — every page
+# was a duplicate-H1 page to crawlers) and the home footer's doubled
 # /llms.txt link, hardens the idempotency probe (a page MENTIONING the
 # marker no longer disables prerendering — the marker-in-comment trap
 # that blanked this host's every prerender until the gate-wave pass), and
 # ships the geo guardrail + operator panel seams; 2.7.1 adds the llms.txt
 # v2 discovery relations (rel=alternate/describedby on BOTH lanes + Link
 # headers), the Accept: text/plain ramp, and the representation content
-# digest. Underneath: 2.6.1 keeps the universal prerender VISIBLE (below
-# it the block ships a literal `hidden` attribute, so every
+# digest. Further underneath: 2.6.1 keeps the universal prerender VISIBLE
+# (below it the block ships a literal `hidden` attribute, so every
 # visibility-respecting consumer reads "Loading..." — the outside-audit
 # finding of 2026-08-22), 2.6.0 keeps sitemap <lastmod> honored instead
 # of swallowed into **kwargs, 2.5.1 remains the Tier-B SEO standard
@@ -53,12 +62,12 @@ mistune>=3.0.0
 # don't move one. REMEMBER THE CACHE TRAP: this line changing IS the
 # Docker cache bust; a `>=` floor can never pull a new release through a
 # cache hit (see the Dockerfile).
-dash-improve-my-llms[flask]>=2.7.1
+dash-improve-my-llms[flask]>=2.8.0
 # This fork is Flask-only (no lib/backend.py), so the other extras are not
 # installed — the commented lines exist because a floor lives in EVERY
 # encoding of it, and a future backend port must not resurrect an old number:
-# dash-improve-my-llms[fastapi]>=2.7.1   # Dash 4.4+ FastAPI backend
-# dash-improve-my-llms[quart]>=2.7.1     # Dash 4.4+ Quart backend
+# dash-improve-my-llms[fastapi]>=2.8.0   # Dash 4.4+ FastAPI backend
+# dash-improve-my-llms[quart]>=2.8.0     # Dash 4.4+ Quart backend
 requests>=2.27.1              # 2plot.dev ad-network client (lib/ad_client.py)
 
 # Clerk authentication (dash-clerk-auth, vendored — not on PyPI).

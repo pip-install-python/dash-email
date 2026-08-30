@@ -44,6 +44,11 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /healthz
+    # Sync item 13 (1.6.35): CD promotes a green `main` to `release` with a
+    # fast-forward push, and only that job writes it — a push to main is a
+    # candidate, not a deploy. autoDeploy stays on: Render reacting to this
+    # branch IS the mechanism.
+    branch: release
     autoDeploy: true
     # Render provisions the certificate once the CNAME resolves. The
     # *.onrender.com hostname keeps working and is NOT the canonical origin —

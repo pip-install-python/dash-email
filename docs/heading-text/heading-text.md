@@ -4,6 +4,8 @@ description: Typography components for email — headings h1-h6 and paragraph te
 endpoint: /components/heading-text
 package: dash_email
 icon: tabler:typography
+category: Components
+order: 4
 lastmod: 2026-07-16
 ---
 

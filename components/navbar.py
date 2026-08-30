@@ -1,12 +1,32 @@
+"""The sidebar — one registry, the app's identity from frontmatter (item 16).
+
+Nothing in this file is edited by a fork. The sections come from each
+page's frontmatter (`category:` + `order:`) in the order of
+`lib.constants.CATEGORY_ORDER`; Resources from `lib.constants.resources()`;
+the Admin section from a callback that returns nothing unless the viewer is
+an admin (the pip-docs+ pattern); the network lives in the top bar's Other
+Apps menu (components/header.py), never here. dash-email's own "App"
+category (the Email Builder) is just another entry in CATEGORY_ORDER —
+this app's per-fork identity, declared in lib/constants.py and
+pages/email_builder.py's register_page(category="App", ...) call, not
+hardcoded here.
+
+Contract order: Home · Changelog → the app's sections → API (when
+generated) → Resources → Admin (owner-only; absent otherwise).
+"""
+from __future__ import annotations
+
+from collections import defaultdict
+
 import dash_mantine_components as dmc
+from dash import Input, Output, callback
 from dash_iconify import DashIconify
 
-from lib.constants import HEADER_HEIGHT
+from lib.constants import CATEGORY_ORDER, HEADER_HEIGHT, resources
 
-excluded_links = [
-    "/404",
-    "/email-builder",  # Featured in its own "App" section below
-]
+ADMIN_PREFIX = "/admin/"
+UNCATEGORISED = "Documentation"
+DEFAULT_ICON = "fluent:document-24-regular"
 
 
 def create_nav_link(icon, text, href, external=False):
@@ -44,125 +64,185 @@ def create_nav_section(title, links):
     )
 
 
-def create_content(data):
-    """Create navbar content with organized sections"""
+# ----------------------------------------------------------------- pages --
 
-    # Desired order for the documentation pages
-    page_order = [
-        "Getting Started",
-        "Email Structure",
-        "Container & Section",
-        "Rows & Columns",
-        "Heading & Text",
-        "Button & Link",
-        "Image & Divider",
-        "Custom Fonts",
-        "Full Templates",
-    ]
 
-    # Create a mapping of page names to their links
-    page_dict = {}
+def is_admin_path(path: str) -> bool:
+    return (path or "").startswith(ADMIN_PREFIX)
+
+
+def is_nav_page(entry) -> bool:
+    """A page the sidebar and search may list: not Home, not /admin/*, not
+    the 404, not a hidden-tier page, and registered from a real path."""
+    path = entry.get("path") or ""
+    if not path.startswith("/") or path == "/" or is_admin_path(path):
+        return False
+    if entry.get("name") in ("Not found 404",) or path in ("/404", "/changelog", "/api"):
+        return False
+    return page_tier(path) != "hidden"
+
+
+def _sort_key(entry):
+    order = entry.get("order")
+    try:
+        order = int(order) if order is not None else 1000
+    except (TypeError, ValueError):
+        order = 1000
+    return (order, entry.get("name") or "")
+
+
+def sections_for(data) -> list[tuple[str, list]]:
+    """``[(section title, [registry entries]), ...]`` in contract order:
+    CATEGORY_ORDER first, then any other category alphabetically; pages
+    within a section by `order` then name. Uncategorised pages fall into
+    one "Documentation" section, last of the app's own."""
+    by_cat: dict[str, list] = defaultdict(list)
     for entry in data:
-        if entry["path"] not in excluded_links and entry["path"] != "/":
-            link = create_nav_link(
-                entry.get("icon", "fluent:document-24-regular"),
-                entry["name"],
-                entry["path"]
-            )
-            page_dict[entry["name"]] = link
+        if not is_nav_page(entry):
+            continue
+        by_cat[entry.get("category") or UNCATEGORISED].append(entry)
+    known = [c for c in CATEGORY_ORDER if c in by_cat]
+    extra = sorted(c for c in by_cat if c not in CATEGORY_ORDER and c != UNCATEGORISED)
+    tail = [UNCATEGORISED] if UNCATEGORISED in by_cat else []
+    return [(c, sorted(by_cat[c], key=_sort_key)) for c in known + extra + tail]
 
-    # Order the links according to page_order
-    page_links = []
-    for page_name in page_order:
-        if page_name in page_dict:
-            page_links.append(page_dict[page_name])
 
-    # Add any remaining pages that aren't in the specified order
-    for name, link in page_dict.items():
-        if name not in page_order:
-            page_links.append(link)
+def admin_pages(data) -> list:
+    return sorted((e for e in data if is_admin_path(e.get("path") or "")),
+                  key=lambda e: e.get("name") or "")
+
+
+def page_tier(path: str) -> str:
+    """This page's locally-declared tier, or "public" when tiers are not
+    wired on this fork."""
+    try:
+        from lib import page_tiers
+
+        return page_tiers.local_tier(path)
+    except Exception:  # pragma: no cover — tiers optional on a fork
+        return "public"
+
+
+_LOCK_LABELS = {"auth": "Sign in required", "admin": "Admin access required"}
+
+
+def _page_link(entry):
+    """A sidebar link, with a lock when the page needs an account: the
+    contract hid `hidden` pages and said nothing about `auth`; listing a
+    locked page indistinguishably sends a reader to a sign-in card with no
+    warning. The gate is unchanged — this is signage. dmc.Tooltip, NOT
+    `title=`: DMC 2.8's Anchor accepts aria-* wildcards but REJECTS `title`
+    with a TypeError at app construction."""
+    link = create_nav_link(entry.get("icon") or DEFAULT_ICON,
+                           entry.get("nav") or entry["name"], entry["path"])
+    label = _LOCK_LABELS.get(page_tier(entry["path"]))
+    if not label:
+        return link
+    group = link.children
+    group.children = list(group.children) + [
+        # DashIconify takes no aria-* (measured: TypeError at construction);
+        # the Tooltip's label is the accessible text.
+        DashIconify(icon="fluent:lock-closed-16-regular", width=13,
+                    style={"opacity": 0.55, "marginLeft": "auto"}),
+    ]
+    return dmc.Tooltip(link, label=label, position="right", withArrow=True, openDelay=300)
+
+
+def _has_api_page(data) -> bool:
+    return any((e.get("path") or "") == "/api" for e in data)
+
+
+def _has_changelog(data) -> bool:
+    return any((e.get("path") or "") == "/changelog" for e in data)
+
+
+# ----------------------------------------------------------------- tree --
+
+
+def create_content(data, variant="desktop"):
+    """The sidebar tree. `variant` names the Admin placeholder so the
+    desktop navbar and the mobile drawer each get their own callback
+    target (a duplicate id would be a Dash error)."""
+    data = list(data)
+    blocks = [create_nav_link("fluent:home-24-regular", "Home", "/")]
+    if _has_changelog(data):
+        blocks.append(create_nav_link("tabler:history", "Changelog", "/changelog"))
+
+    for title, entries in sections_for(data):
+        blocks.append(dmc.Divider(mt="xs", mb="xs"))
+        blocks.append(create_nav_section(title, [_page_link(e) for e in entries]))
+
+    if _has_api_page(data):
+        blocks.append(dmc.Divider(mt="md", mb="sm"))
+        blocks.append(create_nav_section(
+            "API", [create_nav_link("mdi:api", "Component props", "/api")]))
+
+    blocks.append(dmc.Divider(mt="md", mb="sm"))
+    blocks.append(create_nav_section(
+        "Resources",
+        [create_nav_link(r["icon"], r["label"], r["url"], external=True)
+         for r in resources()],
+    ))
+
+    # Admin: filled per request by the callback below; an empty div for
+    # everyone else — the section does not exist for them, it is not hidden.
+    blocks.append(dmc.Box(id=f"navbar-admin-{variant}"))
 
     return dmc.ScrollArea(
         offsetScrollbars=True,
         type="scroll",
         style={"height": "100%"},
-        children=dmc.Stack(
-            [
-                # Home link
-                create_nav_link(
-                    "fluent:home-24-regular",
-                    "Home",
-                    "/"
-                ),
-
-                # The main application
-                dmc.Divider(mt="xs", mb="xs"),
-                create_nav_section(
-                    "App",
-                    [
-                        create_nav_link(
-                            "tabler:mail-plus",
-                            "Email Builder",
-                            "/email-builder"
-                        ),
-                    ]
-                ),
-
-                # Documentation Pages Section
-                dmc.Divider(mt="md", mb="sm"),
-                create_nav_section(
-                    "Components",
-                    page_links
-                ),
-
-                # External Resources Section
-                dmc.Divider(mt="md", mb="sm"),
-                create_nav_section(
-                    "Resources",
-                    [
-                        create_nav_link(
-                            "simple-icons:react",
-                            "React Email",
-                            "https://react.email/docs",
-                            external=True
-                        ),
-                        create_nav_link(
-                            "tabler:send",
-                            "Resend",
-                            "https://resend.com/",
-                            external=True
-                        ),
-                        create_nav_link(
-                            "ic:baseline-design-services",
-                            "DMC",
-                            "https://www.dash-mantine-components.com/",
-                            external=True
-                        ),
-                        # 2plot.dev, NOT pip-install-python.com — the package
-                        # index is the network host, and the retired domain is
-                        # not a link this app publishes (fleet scrub,
-                        # 2026-08-20).
-                        create_nav_link(
-                            "solar:box-bold-duotone",
-                            "Pip Components",
-                            "https://2plot.dev/pip",
-                            external=True
-                        ),
-                    ]
-                ),
-            ],
-            gap="xs",
-            p="md",
-        ),
+        children=dmc.Stack(blocks, gap="xs", p="md"),
     )
 
 
-def create_navbar(data):
-    """Create the main application navbar"""
-    return dmc.AppShellNavbar(
-        children=create_content(data),
-        style={"borderRight": "1px solid var(--mantine-color-gray-3)"}
+def admin_section(data):
+    """The Admin section for a viewer who may see it, or None."""
+    pages = admin_pages(data)
+    if not pages:
+        return None
+    return dmc.Stack(
+        [dmc.Divider(mt="md", mb="sm"),
+         create_nav_section("Admin", [_page_link(e) for e in pages])],
+        gap="xs",
     )
+
+
+@callback(
+    Output("navbar-admin-desktop", "children"),
+    Output("navbar-admin-mobile", "children"),
+    Input("navbar-admin-desktop", "id"),
+)
+def render_admin_section(_):
+    """Fill the Admin section per page load.
+
+    The navbar tree is built once at startup with no request context, so
+    the per-user check runs here, inside a request. Non-admins get empty
+    divs. Without Clerk (local work) the section shows only when
+    ALLOW_UNGATED_ADMIN=1 — the same gate the admin pages themselves use.
+    """
+    import dash
+
+    from lib.auth import admin_access_open, clerk_enabled, is_admin_user
+
+    if clerk_enabled():
+        if not is_admin_user():
+            return None, None
+    elif not admin_access_open():
+        return None, None
+    data = list(dash.page_registry.values())
+    return admin_section(data), admin_section(data)
+
+
+# --------------------------------------------------------------- search --
+
+
+def search_data(data) -> list:
+    """Search entries: the pages the sidebar lists, and nothing else —
+    never /admin/*, never a hidden-tier page (an anonymous visitor could
+    otherwise enumerate them from the dropdown)."""
+    return [{"label": e.get("nav") or e["name"], "value": e["path"]}
+            for e in sorted((e for e in data if is_nav_page(e)), key=_sort_key)]
 
 
 def create_mobile_content(data):
@@ -176,29 +256,34 @@ def create_mobile_content(data):
             dmc.Box(
                 dmc.Select(
                     id="mobile-select-component",
-                    placeholder="Search docs...",
+                    placeholder="Search pages...",
                     searchable=True,
                     clearable=True,
                     size="md",
                     nothingFoundMessage="No pages found",
                     leftSection=DashIconify(icon="mingcute:search-3-line", width=18),
-                    data=[
-                        {"label": component["name"], "value": component["path"]}
-                        for component in data
-                        if component["name"] not in ["Home", "Not found 404"]
-                    ],
+                    data=search_data(data),
                     comboboxProps={"zIndex": 2000},
+                    **{"aria-label": "Search pages"},
                 ),
                 p="md",
                 pb="xs",
             ),
             dmc.Divider(),
             # flex/minHeight give the ScrollArea a definite box to scroll inside.
-            dmc.Box(create_content(data), style={"flex": 1, "minHeight": 0}),
+            dmc.Box(create_content(data, variant="mobile"), style={"flex": 1, "minHeight": 0}),
         ],
         gap=0,
         className="mobile-nav",
         style={"height": "100%"},
+    )
+
+
+def create_navbar(data):
+    """Create the main application navbar"""
+    return dmc.AppShellNavbar(
+        children=create_content(data, variant="desktop"),
+        style={"borderRight": "1px solid var(--mantine-color-gray-3)"}
     )
 
 
@@ -214,6 +299,12 @@ def create_navbar_drawer(data):
         overlayProps={"opacity": 0.55, "blur": 3},
         zIndex=1500,
         withCloseButton=False,  # removes the whole Drawer header row
+        # Always in the DOM (1.6.39): the mobile nav must not depend on a
+        # mount-on-open transition — measured on the wire, `opened` flipped
+        # true while the content never mounted in an unfocused window — and
+        # the Admin callback's mobile target (#navbar-admin-mobile) has to
+        # exist on every page load, not only after the first open.
+        keepMounted=True,
         size="300px",
         padding=0,
         children=create_mobile_content(data),

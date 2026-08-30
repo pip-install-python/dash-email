@@ -216,6 +216,66 @@ table.m2d-table {
     overflow-x: auto;
 }
 
+/* Code blocks scroll inside their own box, wherever they sit (item 11,
+   ported from the template's 1.6.39). CodeHighlight's <pre> already
+   scrolls, but a flex parent with the default min-width:auto — Mantine's
+   List item wrapper, a Blockquote, a Stack — refuses to shrink below the
+   code's intrinsic width and drags the whole document wide. Public
+   Mantine class names only — never the hashed .m_* internals. */
+.mantine-List-itemWrapper,
+.mantine-List-itemLabel,
+.mantine-List-item,
+.mantine-Blockquote-root,
+.mantine-Timeline-itemBody,
+.mantine-CodeHighlight-root,
+.mantine-CodeHighlightTabs-root {
+    min-width: 0;
+    max-width: 100%;
+}
+.mantine-List-itemWrapper {
+    width: 100%;
+}
+.mantine-List-itemLabel {
+    flex: 1 1 auto;
+}
+/* Timeline bullets (/changelog): a Text in a no-wrap Group grows to its
+   longest unbreakable token and leaves its card. */
+.mantine-Timeline-root .mantine-Text-root,
+.mantine-Timeline-root .mantine-Code-root {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+code.m2d-codespan,
+.mantine-Code-root:not(.mantine-CodeHighlight-code) {
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+.mantine-CodeHighlight-root pre,
+.mantine-CodeHighlightTabs-root pre,
+.mantine-AppShell-main pre {
+    overflow-x: auto;
+    max-width: 100%;
+}
+
+/* Skip link (item 16, ported from the template's 1.6.41): the first tab
+   stop, off-screen until keyboard focus, then pinned top-left above the
+   header. */
+.skip-link {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    z-index: 9999;
+    background: var(--mantine-primary-color-filled);
+    color: var(--mantine-color-white);
+    padding: 8px 14px;
+    border-radius: 0 0 8px 0;
+    font-weight: 600;
+    text-decoration: none;
+}
+.skip-link:focus {
+    left: 0;
+}
+
 /* NEVER style Mantine's hashed .m_* classes — they are private internals,
    version-coupled by construction. A rule that stops matching after a bump
    fails silently; one that starts matching applies geometry to the wrong

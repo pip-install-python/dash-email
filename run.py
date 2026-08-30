@@ -60,6 +60,7 @@ from dash_improve_my_llms import (  # noqa: E402
     add_llms_routes,
     LLMSConfig,
     RobotsConfig,
+    on_document_read,
     register_page_metadata,
 )
 
@@ -79,25 +80,34 @@ print(
 # deliberately testing an older release.
 # ----------------------------------------------------------------------------
 
-# The version requirements.txt pins. 2.7.1 is the round-3 fleet floor:
-# 2.7.0 dedups the prerender H1 (every page served TWO h1s to crawlers —
-# the injected header plus the doc body's own markdown H1) and the home
-# footer's doubled /llms.txt link, and hardens the idempotency probe so a
-# page that MENTIONS the marker no longer loses its prerender (the
-# marker-in-comment trap — the very defect that blanked THIS host's every
-# prerender until the gate-wave pass found it in templates/index.html).
-# 2.7.1 adds the llms.txt v2 discovery relations (rel=alternate/describedby
-# on both lanes + Link headers), the Accept: text/plain ramp, and the
-# representation digest — the surfaces the network's agent lane composes
-# over. Underneath, 2.6.1 keeps the universal prerender VISIBLE (below it
-# the block carries a literal `hidden` attribute, so every
-# visibility-respecting consumer reads "Loading..." instead of the page's
-# prose — the outside-audit finding of 2026-08-22), and 2.6.0 keeps sitemap
-# <lastmod> honored instead of swallowed into **kwargs. The same number
-# lives in requirements.txt, .github/workflows/ci.yml (twice),
-# tests/test_pages.py and scripts/check_release.py — grep the number,
-# don't move one.
-LLMS_PKG_FLOOR = (2, 7, 1)
+# The version requirements.txt pins. 2.8.0 is the ledger floor (item 12,
+# the ledger row): ONE classifier — `classify()` is the registry
+# robots.txt is rendered from, and lib/analytics_tracker delegates to it
+# instead of carrying a fourth UA list that filed ClaudeBot (Anthropic's
+# TRAINING crawler) as "search"; the READ EVENT — `on_document_read` hands
+# the app one row per corpus document served (tier, verdict, bytes,
+# verified vendor), which the tracker keeps as the ledger's `reads` table
+# next to `visits`; and verified vendor identity (`verified` is `n/a`
+# where the operator publishes no ranges — Anthropic does not, so
+# ClaudeBot is always n/a here). Underneath, 2.7.1 is the round-3 fleet
+# floor: 2.7.0 dedups the prerender H1 (every page served TWO h1s to
+# crawlers — the injected header plus the doc body's own markdown H1) and
+# the home footer's doubled /llms.txt link, and hardens the idempotency
+# probe so a page that MENTIONS the marker no longer loses its prerender
+# (the marker-in-comment trap — the very defect that blanked THIS host's
+# every prerender until the gate-wave pass found it in
+# templates/index.html). 2.7.1 adds the llms.txt v2 discovery relations
+# (rel=alternate/describedby on both lanes + Link headers), the
+# Accept: text/plain ramp, and the representation digest — the surfaces
+# the network's agent lane composes over. Further underneath, 2.6.1 keeps
+# the universal prerender VISIBLE (below it the block carries a literal
+# `hidden` attribute, so every visibility-respecting consumer reads
+# "Loading..." instead of the page's prose — the outside-audit finding of
+# 2026-08-22), and 2.6.0 keeps sitemap <lastmod> honored instead of
+# swallowed into **kwargs. The same number lives in requirements.txt,
+# .github/workflows/ci.yml (twice), tests/test_pages.py and
+# scripts/check_release.py — grep the number, don't move one.
+LLMS_PKG_FLOOR = (2, 8, 0)
 
 ALLOW_STALE_DEPS = os.environ.get("ALLOW_STALE_DEPS", "0") == "1"
 
@@ -121,14 +131,17 @@ if LLMS_PKG_FLOOR > _version(LLMS_PKG_VERSION):
     _floor_msg = (
         f"dash-improve-my-llms {LLMS_PKG_VERSION} is below the "
         f"{'.'.join(str(n) for n in LLMS_PKG_FLOOR)} floor in "
-        "requirements.txt. Below 2.7.1 the llms.txt v2 discovery relations "
-        "(rel=alternate/describedby + Link headers), the text/plain Accept "
-        "ramp, and the representation digest are missing. Below 2.7.0 every "
-        "page serves a DUPLICATE H1 to crawlers (the injected prerender "
-        "header plus the doc body's own), the home footer doubles its "
-        "/llms.txt link, and a page that merely MENTIONS the prerender "
-        "marker loses its prerender entirely (the marker-in-comment trap). "
-        "Below 2.6.1 the universal prerender ships "
+        "requirements.txt. Below 2.8.0 there is no `classify()` and no "
+        "`on_document_read`: the tracker cannot delegate bot classification "
+        "and no read row is ever kept, so the ledger's `reads` table and "
+        "rollup v4's vendors[] are empty. Below 2.7.1 the llms.txt v2 "
+        "discovery relations (rel=alternate/describedby + Link headers), "
+        "the text/plain Accept ramp, and the representation digest are "
+        "missing. Below 2.7.0 every page serves a DUPLICATE H1 to crawlers "
+        "(the injected prerender header plus the doc body's own), the home "
+        "footer doubles its /llms.txt link, and a page that merely "
+        "MENTIONS the prerender marker loses its prerender entirely (the "
+        "marker-in-comment trap). Below 2.6.1 the universal prerender ships "
         "`hidden`; below 2.6.0 sitemap lastmod dates are silently swallowed; "
         "below 2.5.1 configure_seo does not exist and the crawler document "
         "carries no site identity at all.\n"
@@ -238,14 +251,30 @@ app._base_url = DOCS_BASE_URL
 # Must run before add_llms_routes so the routes are built with it in place.
 network_directory.apply(DOCS_BASE_URL)
 
-# `block_ai_training=True` is correct as of 2.3.3, which buckets per vendor
-# rather than per company: the training crawlers (GPTBot, ClaudeBot, CCBot, …)
-# are disallowed, while the user-triggered and search fetchers — Claude-User,
-# Claude-SearchBot, ChatGPT-User, OAI-SearchBot, PerplexityBot — stay allowed.
-# Note that `False` does not mean "balanced": it never emits the training
-# bucket at all, which silently allows training.
+# Crawler posture — THE WALL IS RETIRED (sync item 15, 1.6.37, owner
+# decision 2026-08-29, ported here 2026-08-30). This host blocked the
+# AI-training crawlers (GPTBot, ClaudeBot, CCBot, …) through the 2.7.1
+# floor round: robots.txt said Disallow and the package's middleware
+# answered 403 on the browser document and /healthz, while the corpus
+# (/llms.txt and the tiers) stayed open — a wall that decided by vendor
+# class what nobody could account for. Sync item 12 changed that: every
+# corpus read is now a ledger row (tier, vendor, verified, bytes), and
+# the hub can reconcile it against the wire. A read that is recorded and
+# priceable does not need a wall; it needs a policy. So training
+# crawlers are ALLOWED by default, same as search fetchers and
+# traditional bots, and the per-vendor knob is the tool from here on —
+# block or meter ONE vendor by name when its ledger rows justify it,
+# never the whole class:
+#
+#     vendor_policy={"bytespider": "block", "gptbot": "meter"}
+#
+# (2.3.3's per-vendor buckets still matter: they are what makes a
+# per-vendor line mean the vendor it names.) This fork has no
+# DIVERGENCES.md posture fence to declare `ai_bots` 403-by-design in —
+# see DIVERGENCES.md entry 6 (item 9 not adopted here); this repo has
+# no lockdown reason to keep the wall, so the flip applies unconditionally.
 app._robots_config = RobotsConfig(
-    block_ai_training=True,       # Disallow GPTBot, ClaudeBot, CCBot, etc.
+    block_ai_training=False,      # training crawlers allowed; the ledger records every read
     allow_ai_search=True,         # Allow Claude-User/-SearchBot, ChatGPT-User, ...
     allow_traditional=True,       # Allow Googlebot, Bingbot, etc.
     crawl_delay=10,
@@ -420,6 +449,17 @@ ACCESS_ENABLED = _access.configure(
 # Wires /llms.txt, /<page>/llms.txt, /robots.txt, /sitemap.xml and
 # bot-detection middleware.
 add_llms_routes(app, LLMSConfig(warn_missing_llms_doc=True))
+
+# The ledger row (item 12, dimll 2.8.0): the package emits one event per
+# corpus document it serves and does no I/O with it; the tracker keeps it
+# as the `reads` table next to `visits` (lib/analytics_tracker.record_read).
+# Registered ONCE — the test suite imports run.py more than once per
+# process and `on_document_read` appends, so a marker on the callback's
+# owner guards the second import (the package also dedups an identical
+# callable; belt and braces).
+if not getattr(tracker, "_read_hook_registered", False):
+    on_document_read(tracker.record_read)
+    tracker._read_hook_registered = True
 
 # ============================================================================
 
