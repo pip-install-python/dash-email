@@ -179,11 +179,13 @@ they win.
   run is red or still running — never "drift" and never a reason to
   deploy by hand or to write `release` yourself (a non-fast-forward
   push fails the next run on purpose). Compare the wire against
-  `git rev-parse origin/release`. This fork has no DIVERGENCES.md
-  posture fence (item 9, 1.6.30, is not adopted here) — the trap
-  above is unconditional until that fence exists; a fork whose fence
-  has no `deploy:` key still watches main, and there the old trap
-  applies instead.
+  `git rev-parse origin/release`. DIVERGENCES.md's posture fence
+  declares `deploy: release-branch` — but that names the CODE road,
+  not the platform's live state: until the Render dashboard's Branch
+  field is flipped to `release` (an owner step this session never
+  takes), Render may still be deploying `main` directly. Check which
+  by comparing `/healthz` build against `origin/main` vs
+  `origin/release` after a push where they'd diverge.
 - There is ONE classifier: `dash_improve_my_llms.classify()`. Never
   add a User-Agent list to this app — the tracker had one for a year
   (`lib/analytics_tracker.py`, until sync item 12), it filed ClaudeBot

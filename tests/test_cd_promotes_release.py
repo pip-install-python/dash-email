@@ -10,8 +10,9 @@ too: Render building the branch CI is still judging can serve a red build.
 These pins hold the STRUCTURE — the part a fork can drift silently: `deploy`
 still needs `test`; the promote step exists and is not a force push; the
 write grant is on that one job, not the workflow; the hook step is gone;
-render.yaml watches `release`. There is no posture-fence pin here — this
-fork has not adopted item 9 (1.6.30) and DIVERGENCES.md entry 6 records why.
+render.yaml watches `release`; DIVERGENCES.md's posture fence declares the
+road (item 9's fence landed via the F3b fan-out on 2026-08-30, after this
+item's own port — DIVERGENCES.md entry 6 records that history).
 """
 
 from __future__ import annotations
@@ -117,3 +118,9 @@ def test_render_watches_release():
     # autoDeploy stays unset (Render default: on) or explicitly True — it
     # IS the mechanism.
     assert all("autoDeploy" not in s or s["autoDeploy"] is True for s in web)
+
+
+def test_the_posture_fence_declares_the_road():
+    text = (REPO / "DIVERGENCES.md").read_text()
+    fence = re.search(r"^```yaml posture[ \t]*\n(.*?)^```", text, re.M | re.S).group(1)
+    assert re.search(r"^deploy:\s*release-branch\s*$", fence, re.M), fence

@@ -87,17 +87,18 @@ host); muischeduler's no-npm dependabot scope.
    delete the card checks and break tests/test_network_smoke.py.
 
 6. **No `yaml posture` fence — item 9 (1.6.30) is not adopted here.**
-   Sync item 13 (1.6.35) asks for a `deploy: release-branch` key in
-   this file's `yaml posture` fence; this fork has never carried that
-   fence or its `tests/test_claude_kit.py` shape validator (`_POSTURE_KEYS`
-   does not exist in this tree's kit test). Rather than fabricate a
-   fence with one key and no validation behind it, the release-branch
-   deploy road is recorded here in prose (divergence 2, retired
-   2026-08-29) and in the `.claude/CLAUDE.md` kit trap instead. A
-   verbatim item-13 port would add a fence CI never checks the shape
-   of, which is exactly the silent-decay failure mode item 9 exists to
-   prevent. Adopting item 9 properly (the fence + its validator) is a
-   follow-up drop, not folded into this one.
+   RETIRED 2026-08-30: the F3b mechanical fan-out (PR #7, merged to
+   main between this session's item-12/13/15/16/17 work and its push)
+   landed `tests/test_claude_kit.py`'s posture-fence shape validator
+   (`_POSTURE_KEYS`, `test_divergences_posture_fence_is_wellformed`)
+   as part of its verbatim block — the validator this entry said was
+   missing now exists. This session added `deploy` to `_POSTURE_KEYS`
+   (item 13's own addition, not carried by the fan-out's block) and
+   added the `yaml posture` fence below with measured values. What
+   this entry originally recorded — that a fence would have been
+   unvalidated fabrication — is no longer true; kept here, retired
+   rather than deleted, because the reasoning explains why the fence
+   below didn't exist until this commit.
 
 7. **Item 16's navigation port keeps its own "App" sidebar category and
    drops one CSS-class pin the template's kwargs table no longer needs
@@ -138,4 +139,22 @@ exists it is authoritative; a fork without it gets the conservative
 mention heuristic (over-flags, never restores).
 
 ```yaml byte-owned
+```
+
+## This host's posture
+
+Measured, not asserted — re-measure when what this host serves
+changes, and paste the probe in the report that changes it.
+`ai_bots` is ClaudeBot, in-process, 2026-08-30 (item 15's flip: no
+wall). `runtime` matches render.yaml. `deploy` names the item-13 road;
+its remedy — flipping the Render dashboard's Branch field to
+`release` — is an owner step this session does not take (CLAUDE.md's
+contract, "Never touch: hosting dashboards"), so `main` may still be
+what Render deploys until that click happens.
+
+```yaml posture
+ai_bots: {"/": 200, "/llms.txt": 200, "/healthz": 200}
+healthz: full
+runtime: docker
+deploy: release-branch
 ```
