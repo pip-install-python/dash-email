@@ -249,10 +249,26 @@ def _http_checks(res: Results, run_mod, dash_mod) -> None:
     get("/robots.txt", "endpoints")
     get("/sitemap.xml", "endpoints")
 
-    # Every page path. A Dash SPA returns the same index HTML for all of them,
-    # so a non-200 means routing or the index template broke.
+    # Every page path. A Dash SPA returns the same index HTML for all of
+    # them, so a non-200 means routing or the index template broke.
+    #
+    # EXCEPT hidden pages: the test client sends no User-Agent, which at
+    # dash-improve-my-llms >= 2.8 (sync item 12) classifies as the crawler
+    # lane — and mark_hidden()'s own contract is "get a 404 when a crawler
+    # hits them via the bot middleware" (its docstring). A bare `expect=200`
+    # loop over the whole registry would silently start failing on every
+    # mark_hidden'd page (/admin/control-board, /admin/traffic) the moment
+    # the floor moved; asserting the 404 explicitly turns that into a named
+    # check instead of an accidental one.
+    from dash_improve_my_llms import is_hidden
+
     for entry in dash_mod.page_registry.values():
-        get(entry["path"], "routes")
+        path = entry["path"]
+        if is_hidden(path):
+            get(path, "routes", expect=(404,),
+                label=f"{path} (hidden — crawler lane, expect 404)")
+        else:
+            get(path, "routes")
 
 
 def _check_callbacks(res: Results, dash_mod, run_mod) -> None:
@@ -545,14 +561,18 @@ def _check_seo(res: Results, run_mod, dash_mod) -> None:
     res.add("seo", "AI-search crawlers allowed", not blocked,
             f"{len(AI_SEARCH)} allowed" if not blocked else "BLOCKED: " + ", ".join(blocked))
 
-    # block_ai_training=False silently emits no training bucket at all, which
-    # reads as "balanced" and is actually "training allowed". This is also the
-    # >=2.3.3 fingerprint: 2.0.0 could not produce it.
+    # POSTURE, not artifact (sync item 15): the training wall is retired —
+    # since item 12 every corpus read is a priced, reconciled ledger row, so
+    # training crawlers are ALLOWED by default like search fetchers and
+    # traditional bots. block_ai_training=False emits no training bucket at
+    # all, so these fall under `User-agent: *` / Allow — the check is "not
+    # walled", not "explicitly allowed" (absent-from-groups is the allow
+    # shape too).
     AI_TRAINING = ["GPTBot", "ClaudeBot", "CCBot"]
-    unblocked = [a for a in AI_TRAINING if not disallowed(a)]
-    res.add("seo", "AI-training crawlers blocked", not unblocked,
-            f"{len(AI_TRAINING)} disallowed" if not unblocked
-            else "NOT blocked: " + ", ".join(unblocked))
+    walled = [a for a in AI_TRAINING if disallowed(a)]
+    res.add("seo", "AI-training crawlers not walled (posture)", not walled,
+            f"{len(AI_TRAINING)} unblocked" if not walled
+            else "STILL WALLED: " + ", ".join(walled))
 
     # --------------------------------------------------------------- network
     llms = client.get("/llms.txt").get_data(as_text=True)

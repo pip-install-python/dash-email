@@ -4,7 +4,6 @@ from dash_iconify import DashIconify
 
 from components.backend_badge import create_backend_badge
 from components.navbar import search_data
-from lib.backend import get_backend_info
 from lib.constants import (
     API_PACKAGES,
     BASE_URL,
