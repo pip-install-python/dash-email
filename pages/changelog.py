@@ -61,6 +61,29 @@ def _is_version(label: str) -> bool:
     return bool(re.fullmatch(r"\d+(\.\d+)*", label))
 
 
+def _is_release_label(label: str) -> bool:
+    """Is an UNBRACKETED `## …` a release heading, or just prose?
+
+    Sync item 18 consolidation 2: the fleet-wide heading widening (which
+    accepts `## 2.0.0 — date` with no brackets) let free text through with
+    it — `## Component License Requirements` parses as a release just as
+    readily as a real version, badging a Timeline card with the whole
+    sentence and inflating the release count by one per phantom. The
+    FLEET_HEADINGS fixture cannot catch this: it holds only real release
+    headings, never a non-release one.
+
+    Brackets are the Keep a Changelog convention and are trusted as intent.
+    Unbracketed, a label must LOOK like a release: a version, an ISO date,
+    or Unreleased.
+    """
+    label = label.strip()
+    return bool(
+        _is_version(label.lstrip("vV"))
+        or re.fullmatch(r"\d{4}-\d{2}-\d{2}", label)
+        or label.lower() == "unreleased"
+    )
+
+
 def newest_date(path: Path = CHANGELOG_PATH) -> str | None:
     """The newest dated release heading — /changelog's sitemap lastmod. It
     moves exactly when the content moves (a release is dated by hand)."""
@@ -95,7 +118,16 @@ def parse_changelog(path: Path = CHANGELOG_PATH) -> list[dict]:
         #   ## [Unreleased]
         # Parsed as [?label]? (sep)? rest?, with the ISO date taken from
         # wherever it sits and the leftover kept as a note.
-        vm = re.match(r"^## \[?(?P<label>[^\]#\n]+?)\]?(?:\s+[-–—]\s+(?P<rest>.+?))?\s*$", line)
+        # `(?(open)\])` — the closing bracket is required only where an
+        # opening one matched, so bracketed and bare headings stay distinct
+        # and `_is_release_label` can hold the bare ones to a higher bar.
+        vm = re.match(
+            r"^## (?P<open>\[)?(?P<label>[^\]#\n]+?)(?(open)\])"
+            r"(?:\s+[-–—]\s+(?P<rest>.+?))?\s*$",
+            line,
+        )
+        if vm and not vm.group("open") and not _is_release_label(vm.group("label")):
+            vm = None  # prose section, not a release
         if vm:
             close_section()
             if current is not None:

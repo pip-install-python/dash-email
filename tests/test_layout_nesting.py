@@ -111,13 +111,23 @@ def test_no_page_nests_a_list_inside_a_children_list(registry):
 def test_a_docs_page_really_carries_its_parsed_content(registry, monkeypatch):
     """The positive control. The walk alone passes on a page that is empty
     for any OTHER reason — the same symptom the defect produces. A real
-    docs page (derived from the registry: the first page that registered a
-    TOC) must render real depth and contain its own heading."""
+    docs page (derived from the registry) must render real depth and
+    contain its own heading.
+
+    Derived from the REGISTRY alone (sync item 18 consolidation 2): this
+    control used to name `lib.aside.ASIDE_PATHS` — a fork-specific module a
+    lockdown fork may not carry, and even here it ties the control to
+    aside-registration timing rather than the registry itself. First
+    registered docs path, admin and `/` excluded."""
     monkeypatch.setenv("ALLOW_UNGATED_ADMIN", "0")
-    from lib.aside import ASIDE_PATHS
 
     by_path = {p.get("path"): p for p in registry.values()}
-    page = by_path[sorted(ASIDE_PATHS)[0]]
+    docs = sorted(
+        p for p in by_path
+        if p and p != "/" and not p.startswith("/admin/")
+    )
+    assert docs, "no docs page registered; the positive control has nothing to prove"
+    page = by_path[docs[0]]
     layout = _resolve(page["layout"])
 
     nodes: list = []

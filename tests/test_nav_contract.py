@@ -559,6 +559,38 @@ def test_every_fleet_heading_shape_parses(tmp_path):
         assert not _re.match(r"^v(Unreleased|\d{4}-)", rendered_badge), "VUNRELEASED / v<date>"
 
 
+# Prose sections a changelog legitimately carries under `##`. The FLEET_
+# HEADINGS fixture above could not catch this: it holds only release
+# headings, so it never asked what a NON-release heading does — and the
+# widened bare-heading match reads every one of these as a release too
+# (sync item 18 consolidation 2; muicharts: a Timeline card badged
+# `Component License Requirements`, claiming 15 releases where there are 14).
+PROSE_HEADINGS = [
+    "## Migration Guides",
+    "## Support",
+    "## Component License Requirements",
+    "## Notes on upgrading",
+]
+
+
+def test_prose_headings_are_not_read_as_releases(tmp_path):
+    """This fork's own CHANGELOG.md carries no prose `## ` section today
+    (checked: all four of its headings are bracketed releases), so the
+    content-derived version of this pin would be vacuous here — this is
+    the fixture-based half, which stays meaningful regardless of content."""
+    from pages.changelog import parse_changelog
+
+    body = "# Changelog\n\n" + "\n\n".join(
+        h + "\n\n- a bullet" for h in ["## [1.4.0] - 2026-08-03", *PROSE_HEADINGS]
+    )
+    p = tmp_path / "CHANGELOG.md"
+    p.write_text(body)
+    versions = parse_changelog(p)
+    assert [v["version"] for v in versions] == ["1.4.0"], (
+        "a prose section parsed as a release — the phantom-release defect"
+    )
+
+
 def test_bold_spans_containing_inline_code_render():
     r"""`**A \`/changelog\` page.** rest` rendered raw asterisks when code
     split before bold — the fix splits on `**bold**` first."""
@@ -587,16 +619,67 @@ def test_battery_hidden_paths_match_the_registry(app_module):
     )
 
 
+_REQUEST_METHODS = ("get", "post", "open", "request", "put", "delete", "head")
+
+
+def _code_only(src: str) -> str:
+    """Source with docstrings and `#` comments removed — a grep for
+    "User-Agent" or "headers=" must not match inside prose explaining the
+    rule rather than code enforcing it (sync item 18 consolidation 2)."""
+    src = re.sub(r'"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\'', "", src)
+    return re.sub(r"#[^\n]*", "", src)
+
+
+def _client_names_a_ua(src: str, var: str) -> bool:
+    """Does `var` — a bound `.test_client()` — name a UA on the wire?
+
+    Either the client carries one for every request (`environ_base`), or
+    every request call on it passes `headers=`. A client that issues no
+    requests in this file cannot get the lane wrong here.
+    """
+    if re.search(re.escape(var) + r"\.environ_base\b[^\n]*HTTP_USER_AGENT", src):
+        return True
+    calls = [c for m in _REQUEST_METHODS for c in _calls(src, f"{var}.{m}")]
+    return bool(calls) and all("headers=" in c for c in calls)
+
+
 def test_every_test_client_user_names_headers():
     """A bare test client sends `Werkzeug/x.y` — crawler lane at dimll
     >= 2.8 — so a mark_hidden page 404s and an every-page-200 loop goes
     red at the floor bump. Any file that drives `.test_client()` must
-    pass headers (a named UA)."""
+    pass a named UA.
+
+    Resolved per CALL SITE, not per file (sync item 18 consolidation 2):
+    the substring form this pin first shipped with — `"headers=" in src`
+    — read the whole file, so a tool whose `headers=` sat on a DIFFERENT
+    code path (an unrelated check elsewhere in the same file) would pass
+    while the actual `.test_client()` sweep stayed bare.
+    """
     offenders = []
     for folder in ("tests", "scripts"):
         for path in sorted((REPO / folder).glob("*.py")):
-            src = path.read_text()
-            names_ua = "headers=" in src or "HTTP_USER_AGENT" in src
-            if ".test_client()" in src and not names_ua:
-                offenders.append(f"{folder}/{path.name}")
+            src = _code_only(path.read_text())
+            if ".test_client()" not in src:
+                continue
+            # `(?!\s*\.)` — a CHAINED call binds the RESPONSE, not the
+            # client (`body = app.server.test_client().get(...)`), and a
+            # naive read of that as an unnamed client with no requests
+            # flags a line that already passed headers.
+            bound = set(re.findall(r"(\w+)\s*=\s*[\w.]*\.test_client\(\)(?!\s*\.)", src))
+            bound |= set(re.findall(r"\.test_client\(\)\s+as\s+(\w+)", src))
+            # Chained calls still get checked — on the call itself, since
+            # there is no client name to follow.
+            for meth in _REQUEST_METHODS:
+                for call in _calls(src, f".test_client().{meth}"):
+                    if "headers=" not in call:
+                        offenders.append(f"{folder}/{path.name}::<chained {meth}>")
+            if not bound:
+                # Wrapped in place (e.g. handed to a helper that always
+                # sends one) — no name to follow, so fall back.
+                if "headers=" not in src and "HTTP_USER_AGENT" not in src:
+                    offenders.append(f"{folder}/{path.name}")
+                continue
+            for var in sorted(bound):
+                if not _client_names_a_ua(src, var):
+                    offenders.append(f"{folder}/{path.name}::{var}")
     assert offenders == [], offenders

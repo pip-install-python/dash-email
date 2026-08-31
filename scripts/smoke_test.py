@@ -54,6 +54,24 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 os.chdir(PROJECT_ROOT)
 
+# A bare `.test_client()` request sends `Werkzeug/x.y` — crawler lane at
+# dash-improve-my-llms >= 2.8 (sync item 12) — so an unnamed UA reads the
+# prerendered crawler document, not the browser one, and a mark_hidden page
+# 404s in the middle of an every-page-200 sweep. Named here, with the
+# internal token, so the sweep gets the browser document by default and
+# tests/test_nav_contract.py::test_every_test_client_user_names_headers
+# (sync item 18) stays green for the right reason, not a coincidental
+# substring match.
+try:
+    from lib.constants import INTERNAL_UA as _INTERNAL_UA
+except Exception:  # pragma: no cover — running outside a repo checkout
+    _INTERNAL_UA = "2plot-internal/1.0 (+https://2plot.ai/docs/satellite-analytics)"
+BROWSER_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 " + _INTERNAL_UA
+)
+CRAWLER_UA = "Mozilla/5.0 (compatible; Googlebot/2.1) " + _INTERNAL_UA
+
 # Flask's test client is the only backend whose in-process client needs no
 # extra dependency, and the page/layout checks are backend-independent.
 os.environ.setdefault("DASH_BACKEND", "flask")
@@ -230,7 +248,7 @@ def _http_checks(res: Results, run_mod, dash_mod) -> None:
 
     def get(url: str, group: str, expect=(200,), label: str | None = None):
         try:
-            resp = client.get(url)
+            resp = client.get(url, headers={"User-Agent": BROWSER_UA})
             code = resp.status_code
             ok = code in expect
             res.add(group, label or url, ok, f"HTTP {code}")
@@ -249,26 +267,33 @@ def _http_checks(res: Results, run_mod, dash_mod) -> None:
     get("/robots.txt", "endpoints")
     get("/sitemap.xml", "endpoints")
 
-    # Every page path. A Dash SPA returns the same index HTML for all of
-    # them, so a non-200 means routing or the index template broke.
-    #
-    # EXCEPT hidden pages: the test client sends no User-Agent, which at
-    # dash-improve-my-llms >= 2.8 (sync item 12) classifies as the crawler
-    # lane — and mark_hidden()'s own contract is "get a 404 when a crawler
-    # hits them via the bot middleware" (its docstring). A bare `expect=200`
-    # loop over the whole registry would silently start failing on every
-    # mark_hidden'd page (/admin/control-board, /admin/traffic) the moment
-    # the floor moved; asserting the 404 explicitly turns that into a named
-    # check instead of an accidental one.
+    # Every page path, under a named BROWSER UA. A Dash SPA returns the same
+    # index HTML for all of them — including mark_hidden'd ones, which the
+    # browser lane serves the ordinary app shell for (the real gate is
+    # client-side auth, not the crawler-lane 404 below) — so a non-200 means
+    # routing or the index template broke.
+    for entry in dash_mod.page_registry.values():
+        get(entry["path"], "routes")
+
+    # mark_hidden()'s OTHER contract, on the other lane (its docstring:
+    # "Get a 404 when a crawler hits them via the bot middleware"): a bare
+    # or crawler-shaped UA must 404 on every hidden page. Named explicitly
+    # rather than relying on the sweep above landing in this lane by
+    # accident (sync item 12's floor bump, sync item 18 consolidation 2).
     from dash_improve_my_llms import is_hidden
 
     for entry in dash_mod.page_registry.values():
         path = entry["path"]
-        if is_hidden(path):
-            get(path, "routes", expect=(404,),
-                label=f"{path} (hidden — crawler lane, expect 404)")
-        else:
-            get(path, "routes")
+        if not is_hidden(path):
+            continue
+        try:
+            resp = client.get(path, headers={"User-Agent": CRAWLER_UA})
+            code = resp.status_code
+            res.add("routes", f"{path} (hidden — crawler lane, expect 404)",
+                    code == 404, f"HTTP {code}")
+        except Exception as exc:  # noqa: BLE001
+            res.add("routes", f"{path} (hidden — crawler lane, expect 404)",
+                    False, f"{type(exc).__name__}: {exc}")
 
 
 def _check_callbacks(res: Results, dash_mod, run_mod) -> None:
@@ -422,10 +447,12 @@ def _check_seo(res: Results, run_mod, dash_mod) -> None:
              if not entry["path"].startswith("/admin/")]
 
     # A UA the package's bot detector recognises. The prerendered document is
-    # what search engines and unfurlers actually index.
-    CRAWLER = {"User-Agent": "Googlebot/2.1 (+http://www.google.com/bot.html)"}
-    BROWSER = {"User-Agent": "Mozilla/5.0 (Macintosh) AppleWebKit/537.36 "
-                             "(KHTML, like Gecko) Chrome/120 Safari/537.36"}
+    # what search engines and unfurlers actually index. Module-level
+    # constants (both carry the internal token) so this function's lane
+    # choice matches _http_checks' and the third-lane pin sees one file, not
+    # two ad hoc UA strings.
+    CRAWLER = {"User-Agent": CRAWLER_UA}
+    BROWSER = {"User-Agent": BROWSER_UA}
 
     # Tags that must never appear twice in one document.
     NEVER_DUPLICATE = [
@@ -519,13 +546,13 @@ def _check_seo(res: Results, run_mod, dash_mod) -> None:
     # 6. The template's origin token must have been substituted at startup.
     from lib.constants import ORIGIN_PLACEHOLDER
 
-    index_html = client.get("/").get_data(as_text=True)
+    index_html = client.get("/", headers=BROWSER).get_data(as_text=True)
     res.add("seo", "origin token substituted", ORIGIN_PLACEHOLDER not in index_html,
             origin if ORIGIN_PLACEHOLDER not in index_html
             else f"{ORIGIN_PLACEHOLDER} still in served HTML")
 
     # ---------------------------------------------------------------- robots
-    robots = client.get("/robots.txt").get_data(as_text=True)
+    robots = client.get("/robots.txt", headers=CRAWLER).get_data(as_text=True)
     groups: dict[str, list[str]] = {}
     agent = None
     for line in robots.splitlines():
@@ -575,7 +602,7 @@ def _check_seo(res: Results, run_mod, dash_mod) -> None:
             else "STILL WALLED: " + ", ".join(walled))
 
     # --------------------------------------------------------------- network
-    llms = client.get("/llms.txt").get_data(as_text=True)
+    llms = client.get("/llms.txt", headers=CRAWLER).get_data(as_text=True)
     res.add("seo", "llms.txt publishes the network directory", "## Network" in llms,
             "## Network present" if "## Network" in llms
             else "network_directory.apply() not wired?")
@@ -600,14 +627,14 @@ def _check_seo(res: Results, run_mod, dash_mod) -> None:
     # markdown is what an agent reads instead of the page.
     leaked = []
     for entry in pages:
-        body = client.get(entry["path"].rstrip("/") + "/llms.txt").get_data(as_text=True)
+        body = client.get(entry["path"].rstrip("/") + "/llms.txt", headers=CRAWLER).get_data(as_text=True)
         if re.search(r"^\.\. \w+::", body, re.M):
             leaked.append(entry["path"])
     res.add("seo", "no directive leak in page llms.txt", not leaked,
             f"{len(pages)} pages clean" if not leaked else ", ".join(leaked[:3]))
 
     # ------------------------------------------------------------- sitemap
-    sitemap = client.get("/sitemap.xml").get_data(as_text=True)
+    sitemap = client.get("/sitemap.xml", headers=CRAWLER).get_data(as_text=True)
     absent = [p["path"] for p in pages if f"<loc>{origin}{p['path']}</loc>" not in sitemap]
     res.add("seo", "sitemap covers every route", not absent,
             f"{len(pages)} URLs" if not absent else "missing: " + ", ".join(absent[:3]))
