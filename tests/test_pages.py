@@ -220,3 +220,72 @@ def test_source_expansion_is_fence_aware(app):
 
     tilde = "~~~\n.. source::requirements.txt\n~~~"
     assert expand(tilde) == tilde, "a tilde-fenced example was expanded"
+
+
+def test_kwargs_expansion_is_fence_aware(app):
+    """Sync item 18's "fourth mechanism": `.. kwargs::` rendered a real
+    props table in the browser lane (lib/directives/kwargs.py's directive
+    hook) while the machine lane read this file's raw markdown, where the
+    directive line was never expanded — every component doc's
+    /<page>/llms.txt carried ZERO prop rows. Assert ROWS and row CONTENT,
+    never a section heading, and mutation-check by pointing the shared
+    resolver at a broken spec: the fix must fail loudly (a visible
+    `<!-- Error -->` marker), never silently (a dropped line)."""
+    import sys
+
+    expand = sys.modules["pages.markdown"]._expand_kwargs_directives
+
+    expanded = expand(".. kwargs::EmailButton")
+    assert "| href |" in expanded, "a real prop row (href) is missing"
+    assert "The URL to navigate to when clicked." in expanded, (
+        "real row CONTENT is missing, not just a table shape"
+    )
+
+    broken = expand(".. kwargs::NotAComponent")
+    assert "<!-- Error" in broken, "a broken spec must fail loudly, not vanish"
+    assert "|" not in broken, "a failed resolve must not fabricate table rows"
+
+    taught = "```markdown\n.. kwargs::EmailButton\n```"
+    assert expand(taught) == taught, "a fenced example was expanded"
+
+    tilde = "~~~\n.. kwargs::EmailButton\n~~~"
+    assert expand(tilde) == tilde, "a tilde-fenced example was expanded"
+
+
+def test_kwargs_lane_parity_on_the_live_registry(client, app):
+    """Every component doc's machine lane must carry the SAME prop rows the
+    browser-lane directive resolves — not a heading, the actual rows. Real
+    docs pages only, derived from the registry (never named, so this stays
+    fork-invariant): every page whose source uses `.. kwargs::` at all."""
+    from pathlib import Path
+
+    from lib.directives.kwargs import resolve_kwargs
+
+    checked = 0
+    for md in sorted(Path("docs").glob("**/*.md")):
+        text = md.read_text()
+        if ".. kwargs::" not in text:
+            continue
+        import re as _re
+
+        specs = _re.findall(r"^\.\. kwargs::(\S+)\s*$", text, _re.MULTILINE)
+        if not specs:
+            continue
+        endpoint = None
+        for line in text.splitlines():
+            if line.startswith("endpoint:"):
+                endpoint = line.split(":", 1)[1].strip()
+                break
+        assert endpoint, f"{md}: no endpoint in frontmatter"
+
+        llms = client.get(f"{endpoint}/llms.txt").text
+        for spec in specs:
+            component_name, rows = resolve_kwargs(spec)
+            assert rows, f"{spec}: resolve_kwargs returned no rows — the fixture is vacuous"
+            first_prop = rows[0]["name"]
+            assert f"| {first_prop} " in llms, (
+                f"{md} declares `.. kwargs::{spec}` but {endpoint}/llms.txt "
+                f"carries no row for its own first prop ({first_prop!r})"
+            )
+            checked += 1
+    assert checked > 0, "no `.. kwargs::` directive found anywhere — the pin walked nothing"

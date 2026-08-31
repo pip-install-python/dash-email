@@ -13,6 +13,30 @@ PACKAGE_MAP = {
 }
 
 
+def resolve_kwargs(spec: str, default_package: str = "dash_email") -> tuple[str, list[dict]]:
+    """Resolve a `.. kwargs::` spec (`EmailButton`, `dmc.Button`, ...) to
+    ``(component_name, prop_rows)``.
+
+    RAISES on failure (bad package, bad component name, no docstring) — on
+    purpose, so a broken spec cannot render as silence. Both the browser
+    lane (Kwargs.hook, below) and the machine lane
+    (pages/markdown.py's ``.. kwargs::`` expansion into `/<page>/llms.txt`)
+    call this one function, so import and docstring resolution happens in
+    exactly ONE place for both consumers — sync item 18's "fourth
+    mechanism": a directive whose output lives only in the React tree while
+    the machine lane reads the raw, un-expanded markdown source.
+    """
+    if "." in spec:
+        package_abbr, component_name = spec.rsplit(".", 1)
+        package = PACKAGE_MAP.get(package_abbr, package_abbr)
+    else:
+        package, component_name = default_package, spec
+    imported = importlib.import_module(package)
+    component = getattr(imported, component_name)
+    docstring = inspect.getdoc(component).split("Keyword arguments:")[-1]
+    return component_name, convert_docstring_to_dict(docstring)
+
+
 class Kwargs(KwargsBase):
     """Props table for Dash components.
 
@@ -29,19 +53,11 @@ class Kwargs(KwargsBase):
                 continue
             attrs = tok["attrs"]
             spec = attrs["title"]
-
-            if "." in spec:
-                package_abbr, component_name = spec.rsplit(".", 1)
-                package = PACKAGE_MAP.get(package_abbr, package_abbr)
-            else:
-                package = attrs.pop("library", "dash_email")
-                component_name = spec
+            default_package = attrs.pop("library", "dash_email")
 
             try:
-                imported = importlib.import_module(package)
-                component = getattr(imported, component_name)
-                docstring = inspect.getdoc(component).split("Keyword arguments:")[-1]
-                attrs["kwargs"] = convert_docstring_to_dict(docstring)
+                component_name, kwargs = resolve_kwargs(spec, default_package)
+                attrs["kwargs"] = kwargs
                 attrs["title"] = component_name
             except Exception:
                 attrs["kwargs"] = []

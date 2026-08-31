@@ -136,6 +136,66 @@ def _expand_source_directives(markdown_content: str) -> str:
     return '\n'.join(out)
 
 
+_KWARGS_DIRECTIVE = re.compile(r'^\.\. kwargs::(\S+)\s*$', re.MULTILINE)
+
+
+def _expand_kwargs_directives(markdown_content: str) -> str:
+    """Inline `.. kwargs::<spec>` directives as a real markdown prop table.
+
+    Sync item 18's "fourth mechanism" (found live on this fork
+    2026-08-31): the browser lane renders `.. kwargs::EmailButton` as a
+    `dmc.Table` via lib/directives/kwargs.py's directive hook, but that
+    output lives only in the React tree — the machine lane
+    (`/<page>/llms.txt`) is built from this file's raw markdown SOURCE,
+    where every `.. kwargs::` line was previously passed through
+    unexpanded. Measured before this fix: every component doc's
+    /<page>/llms.txt carried zero prop rows — the exact content an agent
+    reading the docs most needs. Same `resolve_kwargs()` call as the
+    browser-lane hook (ONE shared parse for both consumers), so a spec
+    that is broken renders a visible `<!-- Error -->` marker here instead
+    of silently vanishing the way an empty `dmc.Table` did in the browser.
+
+    FENCE-AWARE for the same reason `_expand_source_directives` is: the
+    directives page teaches `.. kwargs::` syntax inside a fenced example,
+    and that is documentation, not a directive to expand.
+    """
+    from lib.directives.kwargs import resolve_kwargs
+
+    def expansion(directive_line: str) -> str:
+        spec = _KWARGS_DIRECTIVE.match(directive_line).group(1).strip()
+        try:
+            component_name, rows = resolve_kwargs(spec)
+        except Exception as exc:
+            return f'\n<!-- Error resolving kwargs for {spec}: {exc} -->\n'
+        if not rows:
+            return f'\n<!-- {component_name}: no keyword arguments documented -->\n'
+
+        def esc(cell) -> str:
+            return str(cell).replace('|', '\\|').replace('\n', ' ')
+
+        cols = list(rows[0].keys())
+        header = '| ' + ' | '.join(c.title() for c in cols) + ' |'
+        divider = '| ' + ' | '.join('---' for _ in cols) + ' |'
+        body = '\n'.join(
+            '| ' + ' | '.join(esc(row[c]) for c in cols) + ' |' for row in rows
+        )
+        return f'\n**{component_name}**\n\n{header}\n{divider}\n{body}\n'
+
+    out: List[str] = []
+    fence = None
+    for line in markdown_content.split('\n'):
+        head = line.lstrip()[:3]
+        if fence is None and head in ('```', '~~~'):
+            fence = head
+        elif fence is not None and head == fence:
+            fence = None
+        elif fence is None and _KWARGS_DIRECTIVE.match(line):
+            out.append(expansion(line))
+            continue
+        out.append(line)
+    return '\n'.join(out)
+
+
 def _build_llms_doc(name: str, description: str, expanded_markdown: str, path: str) -> str:
     """Wrap the expanded markdown with the heading/description preamble that
     /llms.txt readers expect."""
@@ -245,7 +305,7 @@ for file in files:
     page_tiers.register(metadata.endpoint, metadata.tier,
                         llms_public=metadata.llms_public)
 
-    expanded = _expand_source_directives(content)
+    expanded = _expand_kwargs_directives(_expand_source_directives(content))
     # The full record, matching the dash.register_page call above. These two
     # calls must never describe the same page differently: the thinner record
     # here is exactly how the fleet shipped "dash-leaflet2 | Attribution" to

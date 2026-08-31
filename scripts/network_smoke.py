@@ -108,12 +108,16 @@ DEFAULT_BASE_URL = "http://localhost:8054"
 SAMPLE_PAGE = "/components/email-structure"
 
 # Owner-only surfaces that must 404 their llms.txt to an anonymous reader.
-# This app marks no page hidden today, so the list is a canary rather than a
-# census: `/admin` is what gets added first, and `mark_hidden("/admin")` has to
-# keep working. Add paths here in the same change that marks them hidden.
+# Literals because this tool runs standalone against a live host with no app
+# import — and PINNED against the registry by
+# tests/test_nav_contract.py::test_battery_hidden_paths_match_the_registry,
+# so a page added, renamed or deleted moves this tuple in the same change
+# (sync item 18: a stale canary here — /admin, /analytics — would miss real
+# hidden pages the registry has carried since /admin/control-board and
+# /admin/traffic were mark_hidden()'d).
 HIDDEN_DOC_PATHS = (
-    "/admin/llms.txt",
-    "/analytics/llms.txt",
+    "/admin/control-board/llms.txt",
+    "/admin/traffic/llms.txt",
 )
 
 # The hub one level up the chain. A satellite's llms.txt must name it — that
