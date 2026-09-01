@@ -396,8 +396,20 @@ class AnalyticsTracker:
         it appends; the flush does the disk work.
 
         ``client_ip`` is dropped unless ``ANALYTICS_KEEP_CLIENT_IP=1``.
+
+        Sync SYNC-1.6.43 item 1 (note 83a): the internal-traffic contract
+        applies here too — "counted nowhere" includes the read table. This
+        MUST run before any field is read, same as track_visit's gate, or
+        the network's own probes (the hub's health sweep, every satellite's
+        link audit, every post-deploy battery) become the busiest "vendor"
+        in the ledger. Keyed on EVENT_FIELDS' ``ua``, not ``user_agent`` —
+        the package's own field name for this event shape.
         """
         if not isinstance(event, dict):
+            return
+        from lib.constants import INTERNAL_UA_TOKEN
+
+        if INTERNAL_UA_TOKEN in (event.get("ua") or "").lower():
             return
         row = {k: event.get(k) for k in EVENT_FIELDS}
         if not KEEP_CLIENT_IP:

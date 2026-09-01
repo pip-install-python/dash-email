@@ -201,3 +201,64 @@ they win.
   `Kwargs` directive that stamps no class on its `dmc.Table`. Don't
   let a future sync "restore" that selector into `assets/main.css`
   or its test assertion; see DIVERGENCES.md entry 7.
+- Which branch Render actually builds can be measured on a GREEN push,
+  by TIMING, without waiting for a red one (leaflet, 2026-08-31 — the
+  method, not just its answer). `main == release == wire` at every step
+  of a promote tells you nothing: both refs hold the same sha, so the
+  wire cannot separate them, and four promotes across three hosts said
+  nothing at all. Sample `/healthz` every ~45 s from the moment of the
+  push and note when the swap lands relative to the PROMOTE, not the
+  push. leaflet measured build+swap at 2m03s from the promote; had
+  Render reacted to the push instead, the same 2m03s would have put the
+  build live ~1m52s earlier than it appeared, and the wire was still
+  serving the old sha well past that point. That is STRONG EVIDENCE
+  that Render is building `release` — not proof, since a queued or slow
+  build could in principle produce the same shape. The canonical
+  discriminator is unchanged and still owed: the first push that goes
+  RED on main must leave `release` unmoved and the wire unchanged.
+  Worth taking on every SECOND promote — it costs one background
+  sampler and converts "asserted" into "strongly evidenced".
+- Verify the artifact the claim is about, and say which one you
+  measured. Three hosts got this wrong in one round while holding the
+  rule: a skip link checked in the received HTML lives in the RENDERED
+  DOM (muicharts, twice inside an hour, having written the rule
+  itself); a props table absent from the crawler document is a defect
+  of the site, not of the harness — pannellum moved that assertion onto
+  the rendered layout and the pin passed for a fortnight over a corpus
+  serving zero props. WHEN A LANE DISAGREES, THAT IS THE FINDING; never
+  relocate the assertion to the lane that passes. And an owner-gated
+  section needs BOTH cookie states to be a measurement at all
+  (modelviewer: `credentials: 'include'` → 2,962 B with admin hrefs,
+  `'omit'` → 108 B with none — hidden, not merely styled away).
+  The error runs BOTH ways and the second one is worse, because it
+  sends someone hunting a bug that does not exist: `curl https://…/ |
+  grep -c skip-link` returns **0** on a host where the skip link is
+  shipped and working (excalidraw, 2026-08-31) — it is a Dash
+  component in `app.layout`, so React renders it and the served HTML
+  never contains it. A fork "verifying the skip link on the wire" with
+  curl reports a missing feature that is present. Anything built by
+  the layout rather than written into the template is invisible to the
+  two artifacts curl can reach; assert it through the layout or a real
+  browser, and say which you used.
+- Assert the corpus is NON-EMPTY before trusting any negative, and print
+  the count beside the result (note 88). A sweep that found nothing and a
+  sweep that swept nothing produce the same green, and only one of them
+  is evidence. Measured on the template, 2026-09-01: its `.flake8` excludes
+  `docs/*/`, so `flake8 docs/` exits 0 with a file in `docs/` containing
+  `def broken(:` — the linter is not passing that file, it is not reading
+  it; `py_compile` sees it at once. Same family, same day: a naive
+  substring count read fenced documentation as defects, a file-scoped grep
+  matched prose ABOUT the defect it was hunting, a `git show … && diff`
+  printed "(empty = same)" on a comparison that never ran, and `pytest … |
+  tail -2 && git commit` committed over a red suite because a pipeline's
+  exit status is the LAST command's. Capture the exit code; count what you
+  swept; say both.
+- And the same family one turn later, worth keeping because it nearly
+  shipped a wrong fact into a spec: extracting a package constant with
+  `re.search(r"EVENT_FIELDS = \((.*?)\)", src, re.S)` truncated at a `)`
+  inside a COMMENT in the middle of the tuple, printed eight of sixteen
+  fields, and reported `'ua' present: False` — confidently, with a
+  number beside it. Caught only because eight looked too few. When you
+  parse a language construct out of source with a regex, check the count
+  against something independent (the file, `python -c "from … import X;
+  print(len(X))"`, the CHANGELOG) before you believe a negative.

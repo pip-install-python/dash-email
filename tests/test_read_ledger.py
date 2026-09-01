@@ -140,3 +140,39 @@ def test_a_pre_item_12_ledger_gains_reads_without_losing_visits(tmp_path):
     t.flush()
     data = json.loads(p.read_text())
     assert len(data["visits"]) == 1 and len(data["reads"]) == 1
+
+
+def test_record_read_drops_internal_traffic_both_directions(tmp_path):
+    """Sync SYNC-1.6.43 item 1 (note 83a): the internal-traffic contract
+    applies to the read table too — "counted nowhere" includes reads.
+    Before this fix record_read had no INTERNAL_UA_TOKEN check at all, so
+    the network's own probes (the hub's health sweep, every satellite's
+    link audit, every post-deploy battery) were landing in `reads`.
+
+    Both directions in one test, so the drop cannot pass by dropping
+    everything: a probe carrying the token (the network's own convention —
+    a real vendor UA WITH the internal suffix, never a bare one) drops;
+    a real vendor UA with no token still counts. Keyed on EVENT_FIELDS'
+    `ua`, not `user_agent` — the wrong key name is this item's own
+    documented failure mode (a silent no-op)."""
+    from lib.analytics_tracker import AnalyticsTracker, EVENT_FIELDS
+    from lib.constants import INTERNAL_UA
+
+    t = AnalyticsTracker(tmp_path / "a.json")
+
+    internal_probe = {k: None for k in EVENT_FIELDS}
+    internal_probe.update(ts=time.time(), path="/llms.txt", tier="index",
+                          ua=f"GPTBot/1.2 {INTERNAL_UA}")
+    t.record_read(internal_probe)
+
+    real_ua = "Mozilla/5.0 AppleWebKit/537.36 (compatible; GPTBot/1.2)"
+    real_probe = {k: None for k in EVENT_FIELDS}
+    real_probe.update(ts=time.time(), path="/llms.txt", tier="index", ua=real_ua)
+    t.record_read(real_probe)
+
+    t.flush()
+    rows = json.loads((tmp_path / "a.json").read_text()).get("reads") or []
+    print(f"internal-token probe: 0 rows expected; real-UA probe: 1 row "
+          f"expected — got {len(rows)} row(s) total")
+    assert len(rows) == 1, rows
+    assert rows[0]["ua"] == real_ua
