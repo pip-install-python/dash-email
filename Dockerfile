@@ -11,7 +11,7 @@
 # tests/test_python_version.py holds the CI site lane and cd.yml's verify to
 # this same minor; /healthz's `python` field + the battery's
 # python_matches_declared check hold the serving host to it.
-FROM python:3.14-slim
+FROM python:3.15-slim
 
 WORKDIR /app
 
